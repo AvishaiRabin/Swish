@@ -7,7 +7,7 @@ export default defineConfig({
     port: 3000,
     open: true,
     proxy: {
-      "/api/nba": {
+      "/api": {
         target: "http://localhost:3001",
         changeOrigin: true,
       },

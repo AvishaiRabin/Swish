@@ -5,6 +5,9 @@ import {
   fetchPlayerStats,
   fetchPlayerGameLog,
   fetchScoreboard,
+  fetchBoxScore,
+  fetchLineups,
+  clearEndpointCache,
 } from "./src/nbaApi.js";
 import {
   BarChart,
@@ -53,36 +56,36 @@ import {
 // ============================================================================
 
 const TEAMS = {
-  BOS: { name: "Celtics", city: "Boston", abbr: "BOS", conference: "East", division: "Atlantic", color: "#007A33", secondaryColor: "#BA9653", record: "42-12" },
-  CLE: { name: "Cavaliers", city: "Cleveland", abbr: "CLE", conference: "East", division: "Central", color: "#6F263D", secondaryColor: "#FFB81C", record: "39-16" },
-  NYK: { name: "Knicks", city: "New York", abbr: "NYK", conference: "East", division: "Atlantic", color: "#006BB6", secondaryColor: "#F58426", record: "36-19" },
-  MIL: { name: "Bucks", city: "Milwaukee", abbr: "MIL", conference: "East", division: "Central", color: "#00471B", secondaryColor: "#EEE1C6", record: "34-20" },
-  ORL: { name: "Magic", city: "Orlando", abbr: "ORL", conference: "East", division: "Southeast", color: "#0077C0", secondaryColor: "#000000", record: "33-22" },
-  IND: { name: "Pacers", city: "Indiana", abbr: "IND", conference: "East", division: "Central", color: "#002D62", secondaryColor: "#FDBB30", record: "32-23" },
-  MIA: { name: "Heat", city: "Miami", abbr: "MIA", conference: "East", division: "Southeast", color: "#98002E", secondaryColor: "#F9A01B", record: "30-24" },
-  PHI: { name: "76ers", city: "Philadelphia", abbr: "PHI", conference: "East", division: "Atlantic", color: "#006BB6", secondaryColor: "#ED174C", record: "29-25" },
-  CHI: { name: "Bulls", city: "Chicago", abbr: "CHI", conference: "East", division: "Central", color: "#CE1141", secondaryColor: "#000000", record: "27-28" },
-  ATL: { name: "Hawks", city: "Atlanta", abbr: "ATL", conference: "East", division: "Southeast", color: "#E03A3E", secondaryColor: "#C1D32F", record: "26-29" },
-  BKN: { name: "Nets", city: "Brooklyn", abbr: "BKN", conference: "East", division: "Atlantic", color: "#000000", secondaryColor: "#FFFFFF", record: "23-31" },
-  TOR: { name: "Raptors", city: "Toronto", abbr: "TOR", conference: "East", division: "Atlantic", color: "#CE1141", secondaryColor: "#000000", record: "22-33" },
-  DET: { name: "Pistons", city: "Detroit", abbr: "DET", conference: "East", division: "Central", color: "#C8102E", secondaryColor: "#1D42BA", record: "18-36" },
-  CHA: { name: "Hornets", city: "Charlotte", abbr: "CHA", conference: "East", division: "Southeast", color: "#1D1160", secondaryColor: "#00788C", record: "15-39" },
-  WAS: { name: "Wizards", city: "Washington", abbr: "WAS", conference: "East", division: "Southeast", color: "#002B5C", secondaryColor: "#E31837", record: "12-42" },
-  OKC: { name: "Thunder", city: "Oklahoma City", abbr: "OKC", conference: "West", division: "Northwest", color: "#007AC1", secondaryColor: "#EF6020", record: "43-11" },
-  DEN: { name: "Nuggets", city: "Denver", abbr: "DEN", conference: "West", division: "Northwest", color: "#0E2240", secondaryColor: "#FEC524", record: "38-17" },
-  MIN: { name: "Timberwolves", city: "Minnesota", abbr: "MIN", conference: "West", division: "Northwest", color: "#0C2340", secondaryColor: "#236192", record: "37-18" },
-  LAC: { name: "Clippers", city: "LA", abbr: "LAC", conference: "West", division: "Pacific", color: "#C8102E", secondaryColor: "#1D428A", record: "35-19" },
-  DAL: { name: "Mavericks", city: "Dallas", abbr: "DAL", conference: "West", division: "Southwest", color: "#00538C", secondaryColor: "#002B5E", record: "34-21" },
-  PHX: { name: "Suns", city: "Phoenix", abbr: "PHX", conference: "West", division: "Pacific", color: "#1D1160", secondaryColor: "#E56020", record: "33-21" },
-  SAC: { name: "Kings", city: "Sacramento", abbr: "SAC", conference: "West", division: "Pacific", color: "#5A2D81", secondaryColor: "#63727A", record: "31-23" },
-  LAL: { name: "Lakers", city: "Los Angeles", abbr: "LAL", conference: "West", division: "Pacific", color: "#552583", secondaryColor: "#FDB927", record: "30-24" },
-  NOP: { name: "Pelicans", city: "New Orleans", abbr: "NOP", conference: "West", division: "Southwest", color: "#0C2340", secondaryColor: "#C8102E", record: "28-27" },
-  GSW: { name: "Warriors", city: "Golden State", abbr: "GSW", conference: "West", division: "Pacific", color: "#1D428A", secondaryColor: "#FFC72C", record: "27-28" },
-  HOU: { name: "Rockets", city: "Houston", abbr: "HOU", conference: "West", division: "Southwest", color: "#CE1141", secondaryColor: "#000000", record: "25-29" },
-  MEM: { name: "Grizzlies", city: "Memphis", abbr: "MEM", conference: "West", division: "Southwest", color: "#5D76A9", secondaryColor: "#12173F", record: "24-30" },
-  SAS: { name: "Spurs", city: "San Antonio", abbr: "SAS", conference: "West", division: "Southwest", color: "#C4CED4", secondaryColor: "#000000", record: "20-34" },
-  UTA: { name: "Jazz", city: "Utah", abbr: "UTA", conference: "West", division: "Northwest", color: "#002B5C", secondaryColor: "#00471B", record: "18-36" },
-  POR: { name: "Trail Blazers", city: "Portland", abbr: "POR", conference: "West", division: "Northwest", color: "#E03A3E", secondaryColor: "#000000", record: "14-40" },
+  BOS: { name: "Celtics", city: "Boston", abbr: "BOS", conference: "East", division: "Atlantic", color: "#007A33", secondaryColor: "#BA9653", record: "42-12", teamId: 1610612738 },
+  CLE: { name: "Cavaliers", city: "Cleveland", abbr: "CLE", conference: "East", division: "Central", color: "#6F263D", secondaryColor: "#FFB81C", record: "39-16", teamId: 1610612739 },
+  NYK: { name: "Knicks", city: "New York", abbr: "NYK", conference: "East", division: "Atlantic", color: "#006BB6", secondaryColor: "#F58426", record: "36-19", teamId: 1610612752 },
+  MIL: { name: "Bucks", city: "Milwaukee", abbr: "MIL", conference: "East", division: "Central", color: "#00471B", secondaryColor: "#EEE1C6", record: "34-20", teamId: 1610612749 },
+  ORL: { name: "Magic", city: "Orlando", abbr: "ORL", conference: "East", division: "Southeast", color: "#0077C0", secondaryColor: "#000000", record: "33-22", teamId: 1610612753 },
+  IND: { name: "Pacers", city: "Indiana", abbr: "IND", conference: "East", division: "Central", color: "#002D62", secondaryColor: "#FDBB30", record: "32-23", teamId: 1610612754 },
+  MIA: { name: "Heat", city: "Miami", abbr: "MIA", conference: "East", division: "Southeast", color: "#98002E", secondaryColor: "#F9A01B", record: "30-24", teamId: 1610612748 },
+  PHI: { name: "76ers", city: "Philadelphia", abbr: "PHI", conference: "East", division: "Atlantic", color: "#006BB6", secondaryColor: "#ED174C", record: "29-25", teamId: 1610612755 },
+  CHI: { name: "Bulls", city: "Chicago", abbr: "CHI", conference: "East", division: "Central", color: "#CE1141", secondaryColor: "#000000", record: "27-28", teamId: 1610612741 },
+  ATL: { name: "Hawks", city: "Atlanta", abbr: "ATL", conference: "East", division: "Southeast", color: "#E03A3E", secondaryColor: "#C1D32F", record: "26-29", teamId: 1610612737 },
+  BKN: { name: "Nets", city: "Brooklyn", abbr: "BKN", conference: "East", division: "Atlantic", color: "#000000", secondaryColor: "#FFFFFF", record: "23-31", teamId: 1610612751 },
+  TOR: { name: "Raptors", city: "Toronto", abbr: "TOR", conference: "East", division: "Atlantic", color: "#CE1141", secondaryColor: "#000000", record: "22-33", teamId: 1610612761 },
+  DET: { name: "Pistons", city: "Detroit", abbr: "DET", conference: "East", division: "Central", color: "#C8102E", secondaryColor: "#1D42BA", record: "18-36", teamId: 1610612765 },
+  CHA: { name: "Hornets", city: "Charlotte", abbr: "CHA", conference: "East", division: "Southeast", color: "#1D1160", secondaryColor: "#00788C", record: "15-39", teamId: 1610612766 },
+  WAS: { name: "Wizards", city: "Washington", abbr: "WAS", conference: "East", division: "Southeast", color: "#002B5C", secondaryColor: "#E31837", record: "12-42", teamId: 1610612764 },
+  OKC: { name: "Thunder", city: "Oklahoma City", abbr: "OKC", conference: "West", division: "Northwest", color: "#007AC1", secondaryColor: "#EF6020", record: "43-11", teamId: 1610612760 },
+  DEN: { name: "Nuggets", city: "Denver", abbr: "DEN", conference: "West", division: "Northwest", color: "#0E2240", secondaryColor: "#FEC524", record: "38-17", teamId: 1610612743 },
+  MIN: { name: "Timberwolves", city: "Minnesota", abbr: "MIN", conference: "West", division: "Northwest", color: "#0C2340", secondaryColor: "#236192", record: "37-18", teamId: 1610612750 },
+  LAC: { name: "Clippers", city: "Los Angeles", abbr: "LAC", conference: "West", division: "Pacific", color: "#C8102E", secondaryColor: "#1D428A", record: "35-19", teamId: 1610612746 },
+  DAL: { name: "Mavericks", city: "Dallas", abbr: "DAL", conference: "West", division: "Southwest", color: "#00538C", secondaryColor: "#002B5E", record: "34-21", teamId: 1610612742 },
+  PHX: { name: "Suns", city: "Phoenix", abbr: "PHX", conference: "West", division: "Pacific", color: "#1D1160", secondaryColor: "#E56020", record: "33-21", teamId: 1610612756 },
+  SAC: { name: "Kings", city: "Sacramento", abbr: "SAC", conference: "West", division: "Pacific", color: "#5A2D81", secondaryColor: "#63727A", record: "31-23", teamId: 1610612758 },
+  LAL: { name: "Lakers", city: "Los Angeles", abbr: "LAL", conference: "West", division: "Pacific", color: "#552583", secondaryColor: "#FDB927", record: "30-24", teamId: 1610612747 },
+  NOP: { name: "Pelicans", city: "New Orleans", abbr: "NOP", conference: "West", division: "Southwest", color: "#0C2340", secondaryColor: "#C8102E", record: "28-27", teamId: 1610612740 },
+  GSW: { name: "Warriors", city: "Golden State", abbr: "GSW", conference: "West", division: "Pacific", color: "#1D428A", secondaryColor: "#FFC72C", record: "27-28", teamId: 1610612744 },
+  HOU: { name: "Rockets", city: "Houston", abbr: "HOU", conference: "West", division: "Southwest", color: "#CE1141", secondaryColor: "#000000", record: "25-29", teamId: 1610612745 },
+  MEM: { name: "Grizzlies", city: "Memphis", abbr: "MEM", conference: "West", division: "Southwest", color: "#5D76A9", secondaryColor: "#12173F", record: "24-30", teamId: 1610612763 },
+  SAS: { name: "Spurs", city: "San Antonio", abbr: "SAS", conference: "West", division: "Southwest", color: "#C4CED4", secondaryColor: "#000000", record: "20-34", teamId: 1610612759 },
+  UTA: { name: "Jazz", city: "Utah", abbr: "UTA", conference: "West", division: "Northwest", color: "#002B5C", secondaryColor: "#00471B", record: "18-36", teamId: 1610612762 },
+  POR: { name: "Trail Blazers", city: "Portland", abbr: "POR", conference: "West", division: "Northwest", color: "#E03A3E", secondaryColor: "#000000", record: "14-40", teamId: 1610612757 },
 };
 
 const mockData = {
@@ -267,46 +270,46 @@ const mockData = {
   // League leaders
   leagueLeaders: {
     Points: [
-      { name: "Luka Doncic", team: "DAL", value: "33.8" },
-      { name: "Giannis Antetokounmpo", team: "MIL", value: "31.2" },
-      { name: "Shai Gilgeous-Alexander", team: "OKC", value: "30.8" },
-      { name: "Joel Embiid", team: "PHI", value: "30.2" },
-      { name: "Jayson Tatum", team: "BOS", value: "27.4" },
+      { name: "Shai Gilgeous-Alexander", team: "OKC", value: "32.1" },
+      { name: "Luka Doncic", team: "LAL", value: "28.6" },
+      { name: "Giannis Antetokounmpo", team: "MIL", value: "27.9" },
+      { name: "Victor Wembanyama", team: "SAS", value: "27.2" },
+      { name: "Jayson Tatum", team: "BOS", value: "26.1" },
     ],
     Rebounds: [
-      { name: "Domantas Sabonis", team: "SAC", value: "13.6" },
-      { name: "Nikola Jokic", team: "DEN", value: "12.4" },
-      { name: "Anthony Davis", team: "LAL", value: "12.2" },
-      { name: "Giannis Antetokounmpo", team: "MIL", value: "11.8" },
-      { name: "Rudy Gobert", team: "MIN", value: "11.4" },
+      { name: "Victor Wembanyama", team: "SAS", value: "12.6" },
+      { name: "Nikola Jokic", team: "DEN", value: "11.9" },
+      { name: "Giannis Antetokounmpo", team: "MIL", value: "11.4" },
+      { name: "Domantas Sabonis", team: "SAC", value: "10.8" },
+      { name: "Anthony Davis", team: "LAL", value: "10.5" },
     ],
     Assists: [
-      { name: "Tyrese Haliburton", team: "IND", value: "10.8" },
-      { name: "Luka Doncic", team: "DAL", value: "9.6" },
-      { name: "Nikola Jokic", team: "DEN", value: "9.2" },
-      { name: "Trae Young", team: "ATL", value: "8.8" },
-      { name: "LeBron James", team: "LAL", value: "8.4" },
+      { name: "Nikola Jokic", team: "DEN", value: "9.8" },
+      { name: "Tyrese Haliburton", team: "IND", value: "9.2" },
+      { name: "Luka Doncic", team: "LAL", value: "8.4" },
+      { name: "LeBron James", team: "LAL", value: "8.1" },
+      { name: "Trae Young", team: "ATL", value: "7.9" },
     ],
     Steals: [
-      { name: "De'Aaron Fox", team: "SAC", value: "2.1" },
-      { name: "Shai Gilgeous-Alexander", team: "OKC", value: "2.0" },
-      { name: "Jrue Holiday", team: "BOS", value: "1.8" },
-      { name: "Anthony Edwards", team: "MIN", value: "1.7" },
+      { name: "Shai Gilgeous-Alexander", team: "OKC", value: "2.2" },
+      { name: "De'Aaron Fox", team: "SAS", value: "1.9" },
+      { name: "Anthony Edwards", team: "MIN", value: "1.8" },
       { name: "Cade Cunningham", team: "DET", value: "1.6" },
+      { name: "Jrue Holiday", team: "BOS", value: "1.5" },
     ],
     Blocks: [
-      { name: "Victor Wembanyama", team: "SAS", value: "3.8" },
-      { name: "Chet Holmgren", team: "OKC", value: "2.6" },
-      { name: "Anthony Davis", team: "LAL", value: "2.4" },
-      { name: "Brook Lopez", team: "MIL", value: "2.2" },
-      { name: "Evan Mobley", team: "CLE", value: "1.9" },
+      { name: "Victor Wembanyama", team: "SAS", value: "4.3" },
+      { name: "Chet Holmgren", team: "OKC", value: "2.5" },
+      { name: "Anthony Davis", team: "LAL", value: "2.3" },
+      { name: "Evan Mobley", team: "CLE", value: "2.0" },
+      { name: "Brook Lopez", team: "MIL", value: "1.8" },
     ],
     "3PM": [
-      { name: "Stephen Curry", team: "GSW", value: "4.8" },
-      { name: "Klay Thompson", team: "DAL", value: "3.6" },
-      { name: "Buddy Hield", team: "GSW", value: "3.4" },
-      { name: "Damian Lillard", team: "MIL", value: "3.2" },
-      { name: "Jayson Tatum", team: "BOS", value: "3.1" },
+      { name: "Stephen Curry", team: "GSW", value: "4.5" },
+      { name: "Damian Lillard", team: "MIL", value: "3.8" },
+      { name: "Jayson Tatum", team: "BOS", value: "3.4" },
+      { name: "Klay Thompson", team: "DAL", value: "3.2" },
+      { name: "Buddy Hield", team: "PHI", value: "3.1" },
     ],
   },
 
@@ -389,13 +392,14 @@ function generateGameLog(basePts, baseReb, baseAst, games = 20) {
 const PLAYERS = [
   {
     id: "luka-doncic",
+    nbaId: 1629029,
     name: "Luka Doncic",
-    team: "DAL",
+    team: "LAL",
     pos: "PG/SG",
     jersey: 77,
     height: "6'7\"",
     weight: "230 lbs",
-    age: 25,
+    age: 26,
     college: "Overseas (Real Madrid)",
     draft: "2018 R1 Pick 3",
     seasonAvg: { pts: 33.8, reb: 9.2, ast: 9.6, stl: 1.4, blk: 0.5, fgPct: 48.7, tpPct: 36.2, ftPct: 78.4, per: 31.2, ts: 60.1, usg: 36.8, ortg: 118, drtg: 112, bpm: 9.4, vorp: 6.2, ws: 8.8 },
@@ -403,13 +407,14 @@ const PLAYERS = [
   },
   {
     id: "giannis-antetokounmpo",
+    nbaId: 203507,
     name: "Giannis Antetokounmpo",
     team: "MIL",
     pos: "PF",
     jersey: 34,
     height: "6'11\"",
     weight: "243 lbs",
-    age: 29,
+    age: 30,
     college: "Overseas (Greece)",
     draft: "2013 R1 Pick 15",
     seasonAvg: { pts: 31.2, reb: 11.8, ast: 5.8, stl: 1.2, blk: 1.4, fgPct: 54.2, tpPct: 27.4, ftPct: 65.8, per: 30.8, ts: 61.4, usg: 34.2, ortg: 120, drtg: 110, bpm: 8.8, vorp: 5.8, ws: 9.2 },
@@ -417,13 +422,14 @@ const PLAYERS = [
   },
   {
     id: "shai-gilgeous-alexander",
+    nbaId: 1628983,
     name: "Shai Gilgeous-Alexander",
     team: "OKC",
     pos: "SG",
     jersey: 2,
     height: "6'6\"",
     weight: "195 lbs",
-    age: 25,
+    age: 26,
     college: "Kentucky",
     draft: "2018 R1 Pick 11",
     seasonAvg: { pts: 30.8, reb: 5.4, ast: 6.2, stl: 2.0, blk: 0.8, fgPct: 51.0, tpPct: 34.8, ftPct: 87.4, per: 28.6, ts: 62.8, usg: 32.4, ortg: 122, drtg: 108, bpm: 8.2, vorp: 5.4, ws: 10.1 },
@@ -431,6 +437,7 @@ const PLAYERS = [
   },
   {
     id: "jayson-tatum",
+    nbaId: 1628369,
     name: "Jayson Tatum",
     team: "BOS",
     pos: "SF/PF",
@@ -445,6 +452,7 @@ const PLAYERS = [
   },
   {
     id: "nikola-jokic",
+    nbaId: 203999,
     name: "Nikola Jokic",
     team: "DEN",
     pos: "C",
@@ -459,6 +467,7 @@ const PLAYERS = [
   },
   {
     id: "stephen-curry",
+    nbaId: 201939,
     name: "Stephen Curry",
     team: "GSW",
     pos: "PG",
@@ -473,13 +482,14 @@ const PLAYERS = [
   },
   {
     id: "lebron-james",
+    nbaId: 2544,
     name: "LeBron James",
     team: "LAL",
     pos: "SF/PG",
     jersey: 23,
     height: "6'9\"",
     weight: "250 lbs",
-    age: 39,
+    age: 40,
     college: "St. Vincent-St. Mary HS",
     draft: "2003 R1 Pick 1",
     seasonAvg: { pts: 25.2, reb: 7.8, ast: 8.4, stl: 1.2, blk: 0.6, fgPct: 52.4, tpPct: 38.2, ftPct: 75.0, per: 26.2, ts: 62.0, usg: 29.4, ortg: 118, drtg: 112, bpm: 7.4, vorp: 4.8, ws: 7.6 },
@@ -487,13 +497,14 @@ const PLAYERS = [
   },
   {
     id: "victor-wembanyama",
+    nbaId: 1641705,
     name: "Victor Wembanyama",
     team: "SAS",
     pos: "C/PF",
     jersey: 1,
     height: "7'4\"",
     weight: "210 lbs",
-    age: 20,
+    age: 21,
     college: "Overseas (France)",
     draft: "2023 R1 Pick 1",
     seasonAvg: { pts: 22.8, reb: 10.2, ast: 3.8, stl: 1.2, blk: 3.8, fgPct: 46.4, tpPct: 33.2, ftPct: 80.6, per: 24.8, ts: 57.6, usg: 28.2, ortg: 110, drtg: 104, bpm: 5.6, vorp: 3.6, ws: 5.2 },
@@ -616,25 +627,6 @@ const TEAM_DETAILS = {
   },
 };
 
-// Lineup combination data for BOS
-const LINEUP_DATA = {
-  BOS: {
-    combos: [
-      { players: ["Jayson Tatum", "Jaylen Brown", "Derrick White", "Jrue Holiday", "Kristaps Porzingis"], min: 482, ortg: 124.6, drtg: 104.2, netRtg: 20.4, plusMinus: "+148", pts: 118.4, fgPct: 51.2 },
-      { players: ["Jayson Tatum", "Jaylen Brown", "Derrick White", "Jrue Holiday", "Al Horford"], min: 614, ortg: 120.8, drtg: 106.8, netRtg: 14.0, plusMinus: "+126", pts: 114.2, fgPct: 48.6 },
-      { players: ["Jayson Tatum", "Jaylen Brown", "Derrick White", "Al Horford", "Kristaps Porzingis"], min: 328, ortg: 122.4, drtg: 105.6, netRtg: 16.8, plusMinus: "+82", pts: 116.8, fgPct: 50.4 },
-      { players: ["Jayson Tatum", "Jaylen Brown", "Jrue Holiday", "Al Horford", "Kristaps Porzingis"], min: 296, ortg: 118.2, drtg: 108.4, netRtg: 9.8, plusMinus: "+44", pts: 112.6, fgPct: 47.8 },
-      { players: ["Jayson Tatum", "Derrick White", "Jrue Holiday", "Al Horford", "Kristaps Porzingis"], min: 186, ortg: 116.4, drtg: 106.2, netRtg: 10.2, plusMinus: "+28", pts: 110.8, fgPct: 48.2 },
-      { players: ["Jaylen Brown", "Derrick White", "Payton Pritchard", "Al Horford", "Kristaps Porzingis"], min: 164, ortg: 114.8, drtg: 110.4, netRtg: 4.4, plusMinus: "+10", pts: 108.4, fgPct: 46.8 },
-      { players: ["Jayson Tatum", "Jaylen Brown", "Payton Pritchard", "Jrue Holiday", "Al Horford"], min: 210, ortg: 119.6, drtg: 108.8, netRtg: 10.8, plusMinus: "+34", pts: 114.8, fgPct: 49.2 },
-      { players: ["Jayson Tatum", "Payton Pritchard", "Derrick White", "Sam Hauser", "Al Horford"], min: 142, ortg: 112.4, drtg: 112.8, netRtg: -0.4, plusMinus: "-2", pts: 106.2, fgPct: 45.4 },
-      { players: ["Jaylen Brown", "Payton Pritchard", "Derrick White", "Sam Hauser", "Jrue Holiday"], min: 128, ortg: 116.2, drtg: 109.6, netRtg: 6.6, plusMinus: "+12", pts: 110.4, fgPct: 47.6 },
-      { players: ["Jayson Tatum", "Jaylen Brown", "Sam Hauser", "Jrue Holiday", "Kristaps Porzingis"], min: 118, ortg: 121.8, drtg: 107.2, netRtg: 14.6, plusMinus: "+26", pts: 116.2, fgPct: 50.8 },
-      { players: ["Payton Pritchard", "Derrick White", "Sam Hauser", "Al Horford", "Kristaps Porzingis"], min: 96, ortg: 108.6, drtg: 114.2, netRtg: -5.6, plusMinus: "-8", pts: 102.4, fgPct: 43.8 },
-      { players: ["Jayson Tatum", "Payton Pritchard", "Sam Hauser", "Al Horford", "Jrue Holiday"], min: 84, ortg: 110.2, drtg: 113.6, netRtg: -3.4, plusMinus: "-4", pts: 104.8, fgPct: 44.6 },
-    ],
-  },
-};
 
 // ============================================================================
 // STYLE DEFINITIONS
@@ -646,21 +638,21 @@ const STYLES = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   :root {
-    --bg-primary: #0a0e17;
-    --bg-secondary: #131a2b;
-    --bg-tertiary: #1a2235;
-    --bg-hover: #1e2a3f;
-    --accent-blue: #3b82f6;
-    --accent-blue-dim: #2563eb;
-    --accent-amber: #f59e0b;
-    --accent-amber-dim: #d97706;
-    --accent-green: #22c55e;
-    --accent-red: #ef4444;
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --text-muted: #64748b;
-    --border-color: #1e293b;
-    --border-hover: #334155;
+    --bg-primary: #e8ddd0;
+    --bg-secondary: #ddd1c2;
+    --bg-tertiary: #d3c5b4;
+    --bg-hover: #c9b9a7;
+    --accent-blue: #e8590c;
+    --accent-blue-dim: #c44a09;
+    --accent-amber: #d97706;
+    --accent-amber-dim: #b45309;
+    --accent-green: #16a34a;
+    --accent-red: #dc2626;
+    --text-primary: #1c1309;
+    --text-secondary: #5c4a35;
+    --text-muted: #9e8878;
+    --border-color: #d4c9bc;
+    --border-hover: #b8ab9c;
   }
 
   body {
@@ -684,8 +676,8 @@ const STYLES = `
   }
 
   @keyframes glow {
-    0%, 100% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.6); }
+    0%, 100% { box-shadow: 0 0 5px rgba(232, 89, 12, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(232, 89, 12, 0.6); }
   }
 
   @keyframes ticker-scroll {
@@ -708,7 +700,7 @@ const STYLES = `
   }
 
   .ticker-track {
-    animation: ticker-scroll 30s linear infinite;
+    animation: ticker-scroll 80s linear infinite;
     display: flex;
     gap: 24px;
     white-space: nowrap;
@@ -847,7 +839,7 @@ function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSe
   return (
     <nav
       style={{
-        background: "rgba(10, 14, 23, 0.95)",
+        background: "rgba(232, 221, 208, 0.95)",
         backdropFilter: "blur(12px)",
         borderBottom: "1px solid var(--border-color)",
         position: "sticky",
@@ -883,7 +875,7 @@ function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSe
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+              background: "linear-gradient(135deg, #e8590c, #c44a09)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1037,7 +1029,7 @@ function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSe
             onClick={onAskAI}
             className="ai-glow"
             style={{
-              background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+              background: "linear-gradient(135deg, #e8590c, #d97706)",
               border: "none",
               borderRadius: 8,
               padding: "8px 16px",
@@ -1216,7 +1208,7 @@ function AIChatPanel({ onClose }) {
                 width: 32,
                 height: 32,
                 borderRadius: 8,
-                background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+                background: "linear-gradient(135deg, #e8590c, #d97706)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1386,7 +1378,7 @@ function AIChatPanel({ onClose }) {
             >
               <ArrowRight
                 size={16}
-                color={input.trim() && !loading ? "white" : "#64748b"}
+                color={input.trim() && !loading ? "white" : "#9e8878"}
               />
             </button>
           </div>
@@ -1404,6 +1396,57 @@ function AIChatPanel({ onClose }) {
         </div>
       </div>
     </>
+  );
+}
+
+// --- Team Logo ---
+// Tries NBA CDN SVG first, falls back to colored div with abbreviation
+function TeamLogo({ abbr, size = 36, style = {} }) {
+  const team = TEAMS[abbr] || {};
+  const [failed, setFailed] = useState(false);
+  const radius = Math.round(size * 0.22);
+
+  if (failed || !team.teamId) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: radius,
+        background: team.color || "#333",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: Math.round(size * 0.27), fontWeight: 800, color: "white",
+        flexShrink: 0, ...style,
+      }}>
+        {abbr}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={`https://cdn.nba.com/logos/nba/${team.teamId}/global/L/logo.svg`}
+      alt={abbr}
+      style={{ width: size, height: size, objectFit: "contain", flexShrink: 0, borderRadius: radius, ...style }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function PlayerHeadshot({ nbaId, name, size = 64, teamColor = "#333", style = {} }) {
+  const [failed, setFailed] = useState(false);
+  const radius = Math.round(size * 0.22);
+  if (failed || !nbaId) {
+    return (
+      <div style={{ width: size, height: size, borderRadius: radius, background: teamColor + "22", border: `2px solid ${teamColor}44`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, ...style }}>
+        <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 24 24" fill="none" stroke={teamColor} strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={`https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaId}.png`}
+      alt={name}
+      style={{ width: size, height: size, objectFit: "cover", objectPosition: "top center", borderRadius: radius, flexShrink: 0, ...style }}
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -1494,91 +1537,21 @@ function ScoreCard({ game, onClick }) {
 
       {/* Teams & Scores */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 4,
-                background: awayTeam.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 9,
-                fontWeight: 700,
-                color: "white",
-              }}
-            >
-              {game.awayTeam}
-            </div>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>
-              {awayTeam.city}
-            </span>
+            <TeamLogo abbr={game.awayTeam} size={24} />
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{awayTeam?.city || game.awayTeam}</span>
           </div>
-          <span
-            className="stat-number"
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              color:
-                game.status !== "UPCOMING"
-                  ? game.awayScore > game.homeScore
-                    ? "var(--text-primary)"
-                    : "var(--text-secondary)"
-                  : "var(--text-muted)",
-            }}
-          >
+          <span className="stat-number" style={{ fontSize: 18, fontWeight: 700, color: game.status !== "UPCOMING" ? game.awayScore > game.homeScore ? "var(--text-primary)" : "var(--text-secondary)" : "var(--text-muted)" }}>
             {game.status !== "UPCOMING" ? game.awayScore : "-"}
           </span>
         </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 4,
-                background: homeTeam.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 9,
-                fontWeight: 700,
-                color: "white",
-              }}
-            >
-              {game.homeTeam}
-            </div>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>
-              {homeTeam.city}
-            </span>
+            <TeamLogo abbr={game.homeTeam} size={24} />
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{homeTeam?.city || game.homeTeam}</span>
           </div>
-          <span
-            className="stat-number"
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              color:
-                game.status !== "UPCOMING"
-                  ? game.homeScore > game.awayScore
-                    ? "var(--text-primary)"
-                    : "var(--text-secondary)"
-                  : "var(--text-muted)",
-            }}
-          >
+          <span className="stat-number" style={{ fontSize: 18, fontWeight: 700, color: game.status !== "UPCOMING" ? game.homeScore > game.awayScore ? "var(--text-primary)" : "var(--text-secondary)" : "var(--text-muted)" }}>
             {game.status !== "UPCOMING" ? game.homeScore : "-"}
           </span>
         </div>
@@ -1775,101 +1748,29 @@ function GameCard({ game, onClick }) {
       {/* Matchup */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Away Team */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: awayTeam.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                fontWeight: 800,
-                color: "white",
-              }}
-            >
-              {game.awayTeam}
-            </div>
+            <TeamLogo abbr={game.awayTeam} size={36} />
             <div>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>
-                {awayTeam.city} {awayTeam.name}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {awayTeam.record}
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{awayTeam?.city} {awayTeam?.name}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{awayTeam?.record}</div>
             </div>
           </div>
-          <span
-            className="stat-number"
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: !isUpcoming
-                ? game.awayScore >= game.homeScore
-                  ? "var(--text-primary)"
-                  : "var(--text-secondary)"
-                : "var(--text-muted)",
-            }}
-          >
+          <span className="stat-number" style={{ fontSize: 24, fontWeight: 700, color: !isUpcoming ? game.awayScore >= game.homeScore ? "var(--text-primary)" : "var(--text-secondary)" : "var(--text-muted)" }}>
             {!isUpcoming ? game.awayScore : "-"}
           </span>
         </div>
 
         {/* Home Team */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: homeTeam.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                fontWeight: 800,
-                color: "white",
-              }}
-            >
-              {game.homeTeam}
-            </div>
+            <TeamLogo abbr={game.homeTeam} size={36} />
             <div>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>
-                {homeTeam.city} {homeTeam.name}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {homeTeam.record}
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{homeTeam?.city} {homeTeam?.name}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{homeTeam?.record}</div>
             </div>
           </div>
-          <span
-            className="stat-number"
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: !isUpcoming
-                ? game.homeScore >= game.awayScore
-                  ? "var(--text-primary)"
-                  : "var(--text-secondary)"
-                : "var(--text-muted)",
-            }}
-          >
+          <span className="stat-number" style={{ fontSize: 24, fontWeight: 700, color: !isUpcoming ? game.homeScore >= game.awayScore ? "var(--text-primary)" : "var(--text-secondary)" : "var(--text-muted)" }}>
             {!isUpcoming ? game.homeScore : "-"}
           </span>
         </div>
@@ -2184,8 +2085,19 @@ function StandingsTable({ conference, teams, onViewFull }) {
 
 // --- League Leaders ---
 function LeagueLeaders({ data, onPlayerClick }) {
-  const categories = Object.keys(data);
-  const [activeCategory, setActiveCategory] = useState(categories[0]);
+  const liveData = useLiveData();
+  const categories = Object.keys(data || {});
+  const [activeCategory, setActiveCategory] = useState(categories[0] || "");
+
+  // Build a name→team map from live player stats (always current-season teams)
+  const liveTeamMap = useMemo(() => {
+    const map = {};
+    (liveData.livePlayers || []).forEach((lp) => { map[lp.name] = lp.team; });
+    return map;
+  }, [liveData.livePlayers]);
+
+  // Keep activeCategory valid when data changes (e.g. live → mock switch)
+  const validCategory = categories.includes(activeCategory) ? activeCategory : categories[0] || "";
 
   return (
     <div>
@@ -2218,20 +2130,11 @@ function LeagueLeaders({ data, onPlayerClick }) {
             key={cat}
             onClick={() => setActiveCategory(cat)}
             style={{
-              background:
-                activeCategory === cat
-                  ? "var(--accent-blue)"
-                  : "var(--bg-secondary)",
-              border:
-                activeCategory === cat
-                  ? "1px solid var(--accent-blue)"
-                  : "1px solid var(--border-color)",
+              background: validCategory === cat ? "var(--accent-blue)" : "var(--bg-secondary)",
+              border: validCategory === cat ? "1px solid var(--accent-blue)" : "1px solid var(--border-color)",
               borderRadius: 6,
               padding: "6px 14px",
-              color:
-                activeCategory === cat
-                  ? "white"
-                  : "var(--text-secondary)",
+              color: validCategory === cat ? "white" : "var(--text-secondary)",
               fontSize: 12,
               fontWeight: 600,
               cursor: "pointer",
@@ -2246,76 +2149,48 @@ function LeagueLeaders({ data, onPlayerClick }) {
       </div>
 
       {/* Leaders List */}
-      <div
-        style={{
-          background: "var(--bg-secondary)",
-          borderRadius: 10,
-          border: "1px solid var(--border-color)",
-          overflow: "hidden",
-        }}
-      >
-        {data[activeCategory].map((player, idx) => (
-          <div
-            key={player.name}
-            onClick={() => onPlayerClick(player.name)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              padding: "12px 16px",
-              borderBottom:
-                idx < data[activeCategory].length - 1
-                  ? "1px solid var(--border-color)"
-                  : "none",
-              cursor: "pointer",
-              transition: "background 0.15s",
-              gap: 12,
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "var(--bg-hover)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
-            <span
-              className="stat-number"
-              style={{
-                width: 24,
-                textAlign: "center",
-                fontSize: 14,
-                fontWeight: 700,
-                color:
-                  idx === 0
-                    ? "var(--accent-amber)"
-                    : idx === 1
-                    ? "var(--text-secondary)"
-                    : idx === 2
-                    ? "#CD7F32"
-                    : "var(--text-muted)",
-              }}
-            >
-              {idx + 1}
-            </span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>
-                {player.name}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {TEAMS[player.team]?.city} {TEAMS[player.team]?.name}
-              </div>
-            </div>
-            <span
-              className="stat-number"
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: "var(--accent-blue)",
-              }}
-            >
-              {player.value}
-            </span>
+      <div style={{ background: "var(--bg-secondary)", borderRadius: 10, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+        {!validCategory || !(data[validCategory]?.length > 0) ? (
+          <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+            Loading leaders…
           </div>
-        ))}
+        ) : (
+          data[validCategory].map((player, idx) => {
+            const teamAbbr = liveTeamMap[player.name] || player.team;
+            const team = TEAMS[teamAbbr];
+            return (
+              <div
+                key={player.name}
+                onClick={() => onPlayerClick(player.name)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  borderBottom: idx < data[validCategory].length - 1 ? "1px solid var(--border-color)" : "none",
+                  cursor: "pointer",
+                  transition: "background 0.15s",
+                  gap: 12,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <span className="stat-number" style={{ width: 24, textAlign: "center", fontSize: 14, fontWeight: 700, color: idx === 0 ? "var(--accent-amber)" : idx === 1 ? "var(--text-secondary)" : idx === 2 ? "#CD7F32" : "var(--text-muted)" }}>
+                  {idx + 1}
+                </span>
+                <TeamLogo abbr={teamAbbr} size={24} style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{player.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {team ? `${team.city} ${team.name}` : teamAbbr}
+                  </div>
+                </div>
+                <span className="stat-number" style={{ fontSize: 18, fontWeight: 700, color: "var(--accent-blue)" }}>
+                  {player.value}
+                </span>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -2388,7 +2263,7 @@ function MobileBottomNav({ currentPage, setCurrentPage }) {
         bottom: 0,
         left: 0,
         right: 0,
-        background: "rgba(10, 14, 23, 0.97)",
+        background: "rgba(232, 221, 208, 0.97)",
         borderTop: "1px solid var(--border-color)",
         zIndex: 50,
         justifyContent: "space-around",
@@ -2609,211 +2484,232 @@ function Breadcrumb({ items }) {
 }
 
 // --- Player Browse Page ---
-function PlayerBrowsePage({ onPlayerSelect }) {
-  const [search, setSearch] = useState("");
+const SORT_OPTIONS = [
+  { value: "name",       label: "Name (A–Z)" },
+  { value: "ppg",        label: "Points (PPG)" },
+  { value: "rpg",        label: "Rebounds (RPG)" },
+  { value: "apg",        label: "Assists (APG)" },
+  { value: "plusMinus",  label: "Plus/Minus" },
+];
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return PLAYERS;
-    const q = search.toLowerCase();
-    return PLAYERS.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.team.toLowerCase().includes(q) ||
-        TEAMS[p.team]?.city.toLowerCase().includes(q) ||
-        TEAMS[p.team]?.name.toLowerCase().includes(q) ||
-        p.pos.toLowerCase().includes(q)
-    );
-  }, [search]);
+// NBA bulk stats API returns generic position groups (G / F / C / G-F / F-G / F-C / C-F).
+// Specific positions (PG/SG/SF/PF) only appear on mock-enriched players.
+const POSITION_OPTIONS = [
+  { value: "Guard",   label: "Guard",   matches: ["G",  "G-F", "PG", "SG"] },
+  { value: "Forward", label: "Forward", matches: ["F",  "F-G", "F-C", "SF", "PF"] },
+  { value: "Center",  label: "Center",  matches: ["C",  "C-F"] },
+];
+
+function PlayerBrowsePage({ onPlayerSelect }) {
+  const liveData = useLiveData();
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [filterTeam, setFilterTeam] = useState("");
+  const [filterPos, setFilterPos] = useState("");
+
+  // Build merged player list: live API players enriched with mock data (nbaId match)
+  const allPlayers = useMemo(() => {
+    const live = liveData.livePlayers;
+    if (live && live.length > 0) {
+      return live.map((lp) => {
+        const mock = PLAYERS.find((m) => m.nbaId === lp.playerId);
+        return {
+          id: mock ? mock.id : `live_${lp.playerId}`,
+          nbaId: lp.playerId,
+          name: lp.name,
+          team: lp.team,
+          pos: mock?.pos || lp.pos || "",
+          jersey: mock?.jersey ?? null,
+          ppg: lp.ppg,
+          rpg: lp.rpg,
+          apg: lp.apg,
+          plusMinus: lp.plusMinus ?? null,
+          isMock: !!mock,
+          liveData: lp,
+        };
+      });
+    }
+    // Fallback: 8 mock players
+    return PLAYERS.map((p) => ({
+      id: p.id,
+      nbaId: p.nbaId,
+      name: p.name,
+      team: p.team,
+      pos: p.pos,
+      jersey: p.jersey,
+      ppg: String(p.seasonAvg.pts),
+      rpg: String(p.seasonAvg.reb),
+      apg: String(p.seasonAvg.ast),
+      isMock: true,
+      liveData: null,
+    }));
+  }, [liveData.livePlayers]);
+
+  // Unique sorted team list for dropdown
+  const teamOptions = useMemo(() => {
+    const abbrs = [...new Set(allPlayers.map((p) => p.team).filter(Boolean))];
+    return abbrs.sort((a, b) => {
+      const nameA = TEAMS[a]?.name || a;
+      const nameB = TEAMS[b]?.name || b;
+      return nameA.localeCompare(nameB);
+    });
+  }, [allPlayers]);
+
+  const displayPlayers = useMemo(() => {
+    let list = allPlayers;
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.team.toLowerCase().includes(q) ||
+          TEAMS[p.team]?.city?.toLowerCase().includes(q) ||
+          TEAMS[p.team]?.name?.toLowerCase().includes(q) ||
+          p.pos.toLowerCase().includes(q)
+      );
+    }
+
+    // Team filter
+    if (filterTeam) list = list.filter((p) => p.team === filterTeam);
+
+    // Position filter — map each label to its set of API position codes
+    if (filterPos) {
+      const opt = POSITION_OPTIONS.find((o) => o.value === filterPos);
+      const allowed = opt ? opt.matches : [filterPos];
+      list = list.filter((p) => allowed.includes(p.pos));
+    }
+
+    // Sort
+    list = [...list];
+    if (sortBy === "name") {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      list.sort((a, b) => parseFloat(b[sortBy] || 0) - parseFloat(a[sortBy] || 0));
+    }
+
+    return list;
+  }, [search, filterTeam, filterPos, sortBy, allPlayers]);
+
+  const selectStyle = {
+    background: "var(--bg-secondary)",
+    border: "1px solid var(--border-color)",
+    borderRadius: 8,
+    padding: "9px 32px 9px 12px",
+    color: "var(--text-primary)",
+    fontSize: 13,
+    outline: "none",
+    fontFamily: "'Inter', sans-serif",
+    cursor: "pointer",
+    appearance: "none",
+    WebkitAppearance: "none",
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 10px center",
+  };
+
+  const activeFilters = [filterTeam, filterPos].filter(Boolean).length;
 
   return (
-    <div
-      className="fade-in"
-      style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 60px" }}
-    >
+    <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 60px" }}>
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-          flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
-        <h1
-          className="font-display"
-          style={{
-            fontSize: 28,
-            fontWeight: 800,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+      <div style={{ marginBottom: 20 }}>
+        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
           <Users size={24} style={{ color: "var(--accent-blue)" }} />
           Players
+          <span style={{ fontSize: 14, fontWeight: 400, color: "var(--text-muted)" }}>({displayPlayers.length}{displayPlayers.length !== allPlayers.length ? ` of ${allPlayers.length}` : ""})</span>
         </h1>
-        {/* Search */}
-        <div style={{ position: "relative" }}>
-          <Search
-            size={16}
-            style={{
-              position: "absolute",
-              left: 12,
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--text-muted)",
-            }}
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, team, position..."
-            style={{
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border-color)",
-              borderRadius: 8,
-              padding: "10px 14px 10px 38px",
-              color: "var(--text-primary)",
-              fontSize: 14,
-              width: 320,
-              outline: "none",
-              fontFamily: "'Inter', sans-serif",
-              transition: "border-color 0.2s",
-            }}
-            onFocus={(e) => (e.target.style.borderColor = "var(--accent-blue)")}
-            onBlur={(e) => (e.target.style.borderColor = "var(--border-color)")}
-          />
+
+        {/* Controls row */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Search */}
+          <div style={{ position: "relative", flex: "1 1 220px", maxWidth: 320 }}>
+            <Search size={15} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search players..."
+              style={{ ...selectStyle, padding: "9px 14px 9px 34px", width: "100%", appearance: "auto", WebkitAppearance: "auto", backgroundImage: "none" }}
+              onFocus={(e) => (e.target.style.borderColor = "var(--accent-blue)")}
+              onBlur={(e) => (e.target.style.borderColor = "var(--border-color)")}
+            />
+          </div>
+
+          {/* Sort */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>Sort by</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={selectStyle}>
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+
+          {/* Team filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Team</span>
+            <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} style={{ ...selectStyle, borderColor: filterTeam ? "var(--accent-blue)" : "var(--border-color)" }}>
+              <option value="">All Teams</option>
+              {teamOptions.map((abbr) => (
+                <option key={abbr} value={abbr}>{TEAMS[abbr] ? `${TEAMS[abbr].city} ${TEAMS[abbr].name}` : abbr}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Position filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Position</span>
+            <select value={filterPos} onChange={(e) => setFilterPos(e.target.value)} style={{ ...selectStyle, borderColor: filterPos ? "var(--accent-blue)" : "var(--border-color)" }}>
+              <option value="">All Positions</option>
+              {POSITION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+
+          {/* Clear filters */}
+          {activeFilters > 0 && (
+            <button
+              onClick={() => { setFilterTeam(""); setFilterPos(""); }}
+              style={{ background: "transparent", border: "1px solid var(--border-color)", borderRadius: 8, padding: "9px 12px", color: "var(--text-muted)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif", display: "flex", alignItems: "center", gap: 5 }}
+            >
+              <X size={13} /> Clear ({activeFilters})
+            </button>
+          )}
         </div>
       </div>
 
       {/* Player Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(300, 1fr))",
-          gap: 16,
-        }}
-      >
-        {filtered.map((player) => {
-          const team = TEAMS[player.team];
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+        {displayPlayers.map((player) => {
+          const team = TEAMS[player.team] || { color: "#444", secondaryColor: "#666", city: player.team, name: "" };
           return (
             <div
               key={player.id}
               className="card-hover"
-              onClick={() => onPlayerSelect(player.id)}
-              style={{
-                background: "var(--bg-secondary)",
-                borderRadius: 14,
-                padding: 22,
-                cursor: "pointer",
-                position: "relative",
-                overflow: "hidden",
-              }}
+              onClick={() => onPlayerSelect(player.id, player)}
+              style={{ background: "var(--bg-secondary)", borderRadius: 14, padding: 18, cursor: "pointer", position: "relative", overflow: "hidden" }}
             >
-              {/* Team color accent */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 3,
-                  background: `linear-gradient(90deg, ${team.color}, ${team.secondaryColor})`,
-                }}
-              />
-
-              <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-                {/* Avatar placeholder */}
-                <div
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 14,
-                    background: `linear-gradient(135deg, ${team.color}33, ${team.color}11)`,
-                    border: `2px solid ${team.color}44`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span
-                    className="font-display"
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 800,
-                      color: team.color,
-                    }}
-                  >
-                    #{player.jersey}
-                  </span>
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 2 }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${team.color}, ${team.secondaryColor})` }} />
+              <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                <PlayerHeadshot nbaId={player.nbaId} name={player.name} size={60} teamColor={team.color} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {player.name}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "var(--text-secondary)",
-                      marginBottom: 8,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: 3,
-                        background: team.color,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 6,
-                        fontWeight: 800,
-                        color: "white",
-                      }}
-                    >
-                      {player.team}
-                    </div>
-                    {team.city} {team.name} · {player.pos}
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                    <TeamLogo abbr={player.team} size={16} />
+                    <span>{team.city} {team.name}</span>
+                    {player.pos && <span style={{ color: "var(--text-muted)" }}>· {player.pos}</span>}
+                    {player.jersey != null && <span style={{ color: "var(--text-muted)" }}>· #{player.jersey}</span>}
                   </div>
-
-                  {/* Quick Stats */}
                   <div style={{ display: "flex", gap: 14 }}>
                     {[
-                      { label: "PTS", value: player.seasonAvg.pts },
-                      { label: "REB", value: player.seasonAvg.reb },
-                      { label: "AST", value: player.seasonAvg.ast },
+                      { label: "PTS", value: player.ppg },
+                      { label: "REB", value: player.rpg },
+                      { label: "AST", value: player.apg },
                     ].map((s) => (
                       <div key={s.label} style={{ textAlign: "center" }}>
-                        <div
-                          className="stat-number"
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 700,
-                            color: "var(--accent-blue)",
-                          }}
-                        >
-                          {s.value}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 9,
-                            color: "var(--text-muted)",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.5px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {s.label}
-                        </div>
+                        <div className="stat-number" style={{ fontSize: 15, fontWeight: 700, color: "var(--accent-blue)" }}>{s.value}</div>
+                        <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 600 }}>{s.label}</div>
                       </div>
                     ))}
                   </div>
@@ -2824,11 +2720,10 @@ function PlayerBrowsePage({ onPlayerSelect }) {
         })}
       </div>
 
-      {filtered.length === 0 && (
+      {displayPlayers.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 0" }}>
-          <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>
-            No players found matching "{search}"
-          </p>
+          <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>No players match your filters.</p>
+          <button onClick={() => { setSearch(""); setFilterTeam(""); setFilterPos(""); }} style={{ marginTop: 12, background: "transparent", border: "1px solid var(--border-color)", borderRadius: 8, padding: "8px 16px", color: "var(--text-secondary)", fontSize: 13, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Clear all filters</button>
         </div>
       )}
     </div>
@@ -2836,10 +2731,46 @@ function PlayerBrowsePage({ onPlayerSelect }) {
 }
 
 // --- Player Detail Page ---
-function PlayerDetailPage({ playerId, onBack }) {
-  const player = PLAYERS.find((p) => p.id === playerId);
+function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
+  const liveData = useLiveData();
+  const mockPlayer = PLAYERS.find((p) => p.id === playerId);
+  const [liveGameLog, setLiveGameLog] = useState(null);
   const [rollingWindow, setRollingWindow] = useState(5);
   const [activeTooltip, setActiveTooltip] = useState(null);
+
+  // For live-only players, fetch their game log
+  useEffect(() => {
+    if (mockPlayer || !livePlayerData?.nbaId) return;
+    let cancelled = false;
+    fetchPlayerGameLog(livePlayerData.nbaId).then((gl) => {
+      if (!cancelled) setLiveGameLog(gl || []);
+    }).catch(() => { if (!cancelled) setLiveGameLog([]); });
+    return () => { cancelled = true; };
+  }, [livePlayerData?.nbaId, mockPlayer]);
+
+  // Build a synthetic player object for live-only players
+  const player = mockPlayer || (livePlayerData ? {
+    id: livePlayerData.id,
+    nbaId: livePlayerData.nbaId,
+    name: livePlayerData.name,
+    team: livePlayerData.team,
+    pos: livePlayerData.pos || "—",
+    jersey: livePlayerData.jersey,
+    height: "—", weight: "—", age: "—", college: "—", draft: "—",
+    seasonAvg: {
+      pts: parseFloat(livePlayerData.ppg) || 0,
+      reb: parseFloat(livePlayerData.rpg) || 0,
+      ast: parseFloat(livePlayerData.apg) || 0,
+      stl: parseFloat(livePlayerData.liveData?.spg) || 0,
+      blk: parseFloat(livePlayerData.liveData?.bpg) || 0,
+      fgPct: parseFloat(livePlayerData.liveData?.fgPct) || 0,
+      tpPct: parseFloat(livePlayerData.liveData?.tpPct) || 0,
+      ftPct: parseFloat(livePlayerData.liveData?.ftPct) || 0,
+      per: null, ts: null, usg: null, ortg: null, drtg: null, bpm: null, vorp: null, ws: null,
+    },
+    gameLog: [],
+    isLiveOnly: true,
+  } : null);
 
   if (!player) {
     return (
@@ -2852,9 +2783,9 @@ function PlayerDetailPage({ playerId, onBack }) {
     );
   }
 
-  const team = TEAMS[player.team];
+  const team = TEAMS[player.team] || { color: "#444", secondaryColor: "#666", city: player.team, name: "", teamId: null };
   const avg = player.seasonAvg;
-  const log = player.gameLog;
+  const log = mockPlayer ? player.gameLog : (liveGameLog || []);
 
   // Compute rolling averages
   const rollingData = useMemo(() => {
@@ -2880,7 +2811,7 @@ function PlayerDetailPage({ playerId, onBack }) {
     { stat: "FG%", value: avg.fgPct, league: 47.0 },
     { stat: "3P%", value: avg.tpPct, league: 36.0 },
     { stat: "FT%", value: avg.ftPct, league: 78.0 },
-    { stat: "TS%", value: avg.ts, league: 57.0 },
+    { stat: "TS%", value: avg.ts ?? 0, league: 57.0 },
   ];
 
   // Radar chart data (normalized 0-100)
@@ -2889,12 +2820,12 @@ function PlayerDetailPage({ playerId, onBack }) {
     { stat: "Rebounding", value: Math.min(100, (avg.reb / 14) * 100) },
     { stat: "Playmaking", value: Math.min(100, (avg.ast / 11) * 100) },
     { stat: "Defense", value: Math.min(100, ((avg.stl + avg.blk) / 4.5) * 100) },
-    { stat: "Efficiency", value: Math.min(100, (avg.ts / 68) * 100) },
-    { stat: "Impact", value: Math.min(100, (avg.per / 35) * 100) },
+    { stat: "Efficiency", value: Math.min(100, ((avg.ts ?? 0) / 68) * 100) },
+    { stat: "Impact", value: Math.min(100, ((avg.per ?? 0) / 35) * 100) },
   ];
 
-  // Advanced stats with descriptions
-  const advancedStats = [
+  // Advanced stats with descriptions (hidden for live-only players that lack them)
+  const advancedStats = avg.per != null ? [
     { key: "PER", value: avg.per.toFixed(1), desc: "Player Efficiency Rating — a per-minute rating of a player's performance. League average is 15.0." },
     { key: "TS%", value: avg.ts.toFixed(1), desc: "True Shooting % — measures shooting efficiency including 2P, 3P, and FT. League average ~57%." },
     { key: "USG%", value: avg.usg.toFixed(1), desc: "Usage Rate — percentage of team plays used by the player while on court." },
@@ -2903,7 +2834,7 @@ function PlayerDetailPage({ playerId, onBack }) {
     { key: "BPM", value: avg.bpm.toFixed(1), desc: "Box Plus/Minus — box score estimate of points per 100 possessions above average." },
     { key: "VORP", value: avg.vorp.toFixed(1), desc: "Value Over Replacement Player — estimate of points contributed over a replacement-level player." },
     { key: "WS", value: avg.ws.toFixed(1), desc: "Win Shares — estimate of the number of wins contributed by a player." },
-  ];
+  ] : [];
 
   const ChartTooltipContent = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -2946,24 +2877,8 @@ function PlayerDetailPage({ playerId, onBack }) {
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg, ${team.color}, ${team.secondaryColor})` }} />
 
         <div style={{ display: "flex", gap: 28, alignItems: "flex-start" }}>
-          {/* Photo placeholder */}
-          <div
-            style={{
-              width: 120,
-              height: 120,
-              borderRadius: 20,
-              background: `linear-gradient(135deg, ${team.color}33, ${team.color}11)`,
-              border: `3px solid ${team.color}44`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <span className="font-display" style={{ fontSize: 36, fontWeight: 800, color: team.color }}>
-              #{player.jersey}
-            </span>
-          </div>
+          {/* Player headshot */}
+          <PlayerHeadshot nbaId={player.nbaId} name={player.name} size={120} teamColor={team.color} />
 
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
@@ -2971,7 +2886,7 @@ function PlayerDetailPage({ playerId, onBack }) {
               <div style={{ width: 28, height: 28, borderRadius: 6, background: team.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "white" }}>{player.team}</div>
             </div>
             <div style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 16 }}>
-              {team.city} {team.name} · {player.pos} · #{player.jersey}
+              {team.city} {team.name} · {player.pos}{player.jersey != null ? ` · #${player.jersey}` : ""}
             </div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
               {[
@@ -3069,12 +2984,12 @@ function PlayerDetailPage({ playerId, onBack }) {
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={rollingData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="game" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 10 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 10 }} domain={["auto", "auto"]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
+              <XAxis dataKey="game" axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 10 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 10 }} domain={["auto", "auto"]} />
               <Tooltip content={<ChartTooltipContent />} />
-              <Line type="monotone" dataKey="pts" stroke="#334155" strokeWidth={1} dot={{ r: 2, fill: "#334155" }} name="Points" />
-              <Line type="monotone" dataKey="rollingPts" stroke="#3b82f6" strokeWidth={2.5} dot={false} name={`${rollingWindow}G Avg`} />
+              <Line type="monotone" dataKey="pts" stroke="#b8ab9c" strokeWidth={1} dot={{ r: 2, fill: "#b8ab9c" }} name="Points" />
+              <Line type="monotone" dataKey="rollingPts" stroke="#e8590c" strokeWidth={2.5} dot={false} name={`${rollingWindow}G Avg`} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -3090,18 +3005,18 @@ function PlayerDetailPage({ playerId, onBack }) {
               <div style={{ width: 10, height: 10, borderRadius: 2, background: team.color }} /> Player
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: "#334155" }} /> League Avg
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--text-muted)" }} /> League Avg
             </span>
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={shootingSplits} barGap={4} barCategoryGap="25%">
-              <XAxis dataKey="stat" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 10 }} domain={[0, 100]} />
+              <XAxis dataKey="stat" axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 10 }} domain={[0, 100]} />
               <Tooltip content={<ChartTooltipContent />} />
               <Bar dataKey="value" name="Player" radius={[4, 4, 0, 0]} maxBarSize={32}>
                 {shootingSplits.map((_, i) => <Cell key={i} fill={team.color} />)}
               </Bar>
-              <Bar dataKey="league" name="League Avg" radius={[4, 4, 0, 0]} maxBarSize={32} fill="#334155" />
+              <Bar dataKey="league" name="League Avg" radius={[4, 4, 0, 0]} maxBarSize={32} fill="#b8ab9c" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -3116,8 +3031,8 @@ function PlayerDetailPage({ playerId, onBack }) {
           </h3>
           <ResponsiveContainer width="100%" height={260}>
             <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%">
-              <PolarGrid stroke="rgba(255,255,255,0.1)" />
-              <PolarAngleAxis dataKey="stat" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+              <PolarGrid stroke="rgba(0,0,0,0.1)" />
+              <PolarAngleAxis dataKey="stat" tick={{ fill: "#9e8878", fontSize: 11 }} />
               <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
               <Radar name={player.name} dataKey="value" stroke={team.color} fill={team.color} fillOpacity={0.25} strokeWidth={2} />
             </RadarChart>
@@ -3184,64 +3099,72 @@ function PlayerDetailPage({ playerId, onBack }) {
       <div>
         <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
           <Calendar size={18} style={{ color: "var(--accent-blue)" }} />
-          Game Log (Last {log.length} Games)
+          Game Log
+          <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-muted)", marginLeft: 4 }}>({log.length} games)</span>
         </h2>
-        <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden", overflowX: "auto" }}>
-          {/* Header */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "52px 44px 38px 50px 38px 38px 38px 38px 38px 50px 50px 44px 32px 40px",
-              padding: "8px 14px",
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--text-muted)",
-              borderBottom: "1px solid var(--border-color)",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              minWidth: 680,
-            }}
-          >
-            {["Date", "Opp", "W/L", "Min", "PTS", "REB", "AST", "STL", "BLK", "FG", "3P", "FT", "TO", "+/-"].map((h) => (
-              <span key={h} className="stat-number" style={{ textAlign: h === "Date" || h === "Opp" || h === "W/L" ? "left" : "center" }}>{h}</span>
-            ))}
+        <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+          {/* Scrollable wrapper — shows 8 rows, scroll for the rest */}
+          <div className="score-scroll" style={{ overflowX: "auto", overflowY: "auto", maxHeight: 330 }}>
+            {/* Header — sticky so column labels stay visible while scrolling */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "52px 44px 38px 50px 38px 38px 38px 38px 38px 50px 50px 44px 32px 40px",
+                padding: "8px 14px",
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--text-muted)",
+                borderBottom: "1px solid var(--border-color)",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                minWidth: 680,
+                position: "sticky",
+                top: 0,
+                background: "var(--bg-secondary)",
+                zIndex: 1,
+              }}
+            >
+              {["Date", "Opp", "W/L", "Min", "PTS", "REB", "AST", "STL", "BLK", "FG", "3P", "FT", "TO", "+/-"].map((h) => (
+                <span key={h} className="stat-number" style={{ textAlign: h === "Date" || h === "Opp" || h === "W/L" ? "left" : "center" }}>{h}</span>
+              ))}
+            </div>
+            {/* Rows */}
+            {log.map((g, idx) => {
+              const pm = parseInt(g.plusMinus);
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "52px 44px 38px 50px 38px 38px 38px 38px 38px 50px 50px 44px 32px 40px",
+                    padding: "8px 14px",
+                    fontSize: 12,
+                    borderBottom: idx < log.length - 1 ? "1px solid var(--border-color)" : "none",
+                    alignItems: "center",
+                    transition: "background 0.15s",
+                    minWidth: 680,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <span className="stat-number" style={{ color: "var(--text-muted)", fontSize: 11 }}>{g.date}</span>
+                  <span style={{ fontWeight: 600, fontSize: 11 }}>{g.opp}</span>
+                  <span style={{ fontWeight: 600, fontSize: 11, color: g.result === "W" ? "var(--accent-green)" : "var(--accent-red)" }}>{g.result}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.min}</span>
+                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 700, color: g.pts >= 30 ? "var(--accent-blue)" : "var(--text-primary)" }}>{g.pts}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: g.reb >= 10 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{g.reb}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: g.ast >= 10 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{g.ast}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{g.stl}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{g.blk}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.fgm}-{g.fga}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.tpm}-{g.tpa}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.ftm}-{g.fta}</span>
+                  <span className="stat-number" style={{ textAlign: "center", color: g.to >= 4 ? "var(--accent-red)" : "var(--text-muted)" }}>{g.to}</span>
+                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: pm > 0 ? "var(--accent-green)" : pm < 0 ? "var(--accent-red)" : "var(--text-secondary)" }}>{g.plusMinus}</span>
+                </div>
+              );
+            })}
           </div>
-          {/* Rows */}
-          {log.map((g, idx) => {
-            const pm = parseInt(g.plusMinus);
-            return (
-              <div
-                key={idx}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "52px 44px 38px 50px 38px 38px 38px 38px 38px 50px 50px 44px 32px 40px",
-                  padding: "8px 14px",
-                  fontSize: 12,
-                  borderBottom: idx < log.length - 1 ? "1px solid var(--border-color)" : "none",
-                  alignItems: "center",
-                  transition: "background 0.15s",
-                  minWidth: 680,
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <span className="stat-number" style={{ color: "var(--text-muted)", fontSize: 11 }}>{g.date}</span>
-                <span style={{ fontWeight: 600, fontSize: 11 }}>{g.opp}</span>
-                <span style={{ fontWeight: 600, fontSize: 11, color: g.result === "W" ? "var(--accent-green)" : "var(--accent-red)" }}>{g.result}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.min}</span>
-                <span className="stat-number" style={{ textAlign: "center", fontWeight: 700, color: g.pts >= 30 ? "var(--accent-blue)" : "var(--text-primary)" }}>{g.pts}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: g.reb >= 10 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{g.reb}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: g.ast >= 10 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{g.ast}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{g.stl}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{g.blk}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.fgm}-{g.fga}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.tpm}-{g.tpa}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 11 }}>{g.ftm}-{g.fta}</span>
-                <span className="stat-number" style={{ textAlign: "center", color: g.to >= 4 ? "var(--accent-red)" : "var(--text-muted)" }}>{g.to}</span>
-                <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: pm > 0 ? "var(--accent-green)" : pm < 0 ? "var(--accent-red)" : "var(--text-secondary)" }}>{g.plusMinus}</span>
-              </div>
-            );
-          })}
         </div>
       </div>
     </div>
@@ -3250,322 +3173,379 @@ function PlayerDetailPage({ playerId, onBack }) {
 
 // --- Lineup Analyzer Page ---
 function LineupAnalyzerPage() {
+  const liveData = useLiveData();
   const [selectedTeam, setSelectedTeam] = useState("BOS");
+  const [groupSize, setGroupSize] = useState(5);
   const [playerFilter, setPlayerFilter] = useState([]);
   const [sortKey, setSortKey] = useState("netRtg");
   const [sortDir, setSortDir] = useState("desc");
+  const [minMinutes, setMinMinutes] = useState(10);
+  const [lineups, setLineups] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const teamData = LINEUP_DATA[selectedTeam];
-  const hasData = !!teamData;
-  const team = TEAMS[selectedTeam];
+  const team = TEAMS[selectedTeam] || {};
 
-  // All unique player names on this team's lineup data
-  const allPlayers = useMemo(() => {
-    if (!teamData) return [];
+  // Fetch lineups from DB when team or groupSize changes (2-5 man only)
+  useEffect(() => {
+    if (groupSize === 1) {
+      setLineups([]);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    fetchLineups(selectedTeam, groupSize)
+      .then((data) => {
+        setLineups(data);
+        setLoading(false);
+        // Trim persisted player filter to only names present in the new group size
+        const chipNames = new Set();
+        data.forEach((l) => (l.players || "").split(" - ").forEach((n) => chipNames.add(n.trim())));
+        setPlayerFilter((prev) => prev.filter((n) => chipNames.has(n)));
+      })
+      .catch((err) => { setError(err.message); setLoading(false); });
+  }, [selectedTeam, groupSize]);
+
+  // Reset filter when team changes (for 1-man view too)
+  useEffect(() => { setPlayerFilter([]); }, [selectedTeam]);
+
+  // 1-man: filter livePlayers by selected team
+  const singlePlayers = useMemo(() => {
+    if (groupSize !== 1) return [];
+    return (liveData.livePlayers || [])
+      .filter((p) => p.team === selectedTeam)
+      .sort((a, b) => (parseFloat(b.ppg) || 0) - (parseFloat(a.ppg) || 0));
+  }, [groupSize, selectedTeam, liveData.livePlayers]);
+
+  // Unique abbreviated player names from lineup GROUP_NAME strings (filter chips)
+  const allChipNames = useMemo(() => {
+    if (groupSize === 1) return [];
     const set = new Set();
-    teamData.combos.forEach((c) => c.players.forEach((p) => set.add(p)));
+    lineups.forEach((l) => (l.players || "").split(" - ").forEach((n) => set.add(n.trim())));
     return Array.from(set).sort();
-  }, [teamData]);
+  }, [lineups, groupSize]);
 
-  // Filter combos by selected players
-  const filteredCombos = useMemo(() => {
-    if (!teamData) return [];
-    let combos = teamData.combos;
+  // Filter + sort multi-man lineups
+  const filteredLineups = useMemo(() => {
+    let rows = lineups.filter((l) => parseFloat(l.min) >= minMinutes);
     if (playerFilter.length > 0) {
-      combos = combos.filter((c) =>
-        playerFilter.every((p) => c.players.includes(p))
+      rows = rows.filter((l) =>
+        playerFilter.every((pname) =>
+          (l.players || "").split(" - ").map((s) => s.trim()).includes(pname)
+        )
       );
     }
-    // Sort
-    return [...combos].sort((a, b) => {
-      let av = a[sortKey];
-      let bv = b[sortKey];
-      if (typeof av === "string") av = parseFloat(av);
-      if (typeof bv === "string") bv = parseFloat(bv);
+    return [...rows].sort((a, b) => {
+      let av = parseFloat(a[sortKey]) ?? -Infinity;
+      let bv = parseFloat(b[sortKey]) ?? -Infinity;
       return sortDir === "desc" ? bv - av : av - bv;
     });
-  }, [teamData, playerFilter, sortKey, sortDir]);
+  }, [lineups, playerFilter, sortKey, sortDir, minMinutes]);
+
+  // Sort 1-man player rows
+  const sortedSinglePlayers = useMemo(() => {
+    if (groupSize !== 1) return [];
+    return [...singlePlayers].sort((a, b) => {
+      const av = parseFloat(a[sortKey]) || 0;
+      const bv = parseFloat(b[sortKey]) || 0;
+      return sortDir === "desc" ? bv - av : av - bv;
+    });
+  }, [singlePlayers, sortKey, sortDir, groupSize]);
 
   const handleSort = (key) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
+    if (sortKey === key) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    else { setSortKey(key); setSortDir("desc"); }
   };
-
-  // Best and worst 5-man lineups
-  const best5 = useMemo(() => {
-    if (!teamData) return null;
-    return teamData.combos.filter((c) => c.players.length === 5).sort((a, b) => b.netRtg - a.netRtg)[0];
-  }, [teamData]);
-
-  const worst5 = useMemo(() => {
-    if (!teamData) return null;
-    return teamData.combos.filter((c) => c.players.length === 5).sort((a, b) => a.netRtg - b.netRtg)[0];
-  }, [teamData]);
-
-  // Chart data for top lineups by net rating
-  const chartData = useMemo(() => {
-    if (!teamData) return [];
-    return [...teamData.combos]
-      .sort((a, b) => b.netRtg - a.netRtg)
-      .slice(0, 8)
-      .map((c, i) => ({
-        name: `L${i + 1}`,
-        netRtg: c.netRtg,
-        ortg: c.ortg,
-        drtg: c.drtg,
-        label: c.players.map((p) => p.split(" ").pop()).join(" / "),
-      }));
-  }, [teamData]);
-
-  const columns = [
-    { key: "players", label: "Lineup", width: "1fr", align: "left" },
-    { key: "min", label: "MIN", width: 52 },
-    { key: "netRtg", label: "NET", width: 52 },
-    { key: "ortg", label: "ORTG", width: 52 },
-    { key: "drtg", label: "DRTG", width: 52 },
-    { key: "plusMinus", label: "+/-", width: 52 },
-    { key: "pts", label: "PPG", width: 48 },
-    { key: "fgPct", label: "FG%", width: 48 },
-  ];
-
-  const gridTemplate = columns.map((c) => (typeof c.width === "number" ? `${c.width}px` : c.width)).join(" ");
 
   const SortIcon = ({ colKey }) => {
     if (sortKey !== colKey) return null;
     return sortDir === "desc" ? <ChevronDown size={11} style={{ marginLeft: 2 }} /> : <ChevronUp size={11} style={{ marginLeft: 2 }} />;
   };
 
-  const ChartTooltipContent = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const combo = chartData.find((d) => d.name === label);
-      return (
-        <div style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "10px 14px", fontSize: 12, maxWidth: 260 }}>
-          <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--text-primary)", fontSize: 11, lineHeight: 1.4 }}>{combo?.label}</div>
-          {payload.map((p) => (
-            <div key={p.dataKey} style={{ color: p.fill || p.color, marginBottom: 2 }}>
-              {p.name}: <span style={{ fontWeight: 600 }}>{p.value}</span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
+  // Column definitions
+  const multiColumns = [
+    { key: "players", label: "Lineup", width: "1fr", align: "left" },
+    { key: "gp",        label: "GP",   width: 44 },
+    { key: "min",       label: "MIN",  width: 50 },
+    { key: "netRtg",    label: "NET",  width: 56 },
+    { key: "ortg",      label: "ORTG", width: 54 },
+    { key: "drtg",      label: "DRTG", width: 54 },
+    { key: "plusMinus", label: "+/-",  width: 54 },
+    { key: "pts",       label: "PPG",  width: 50 },
+    { key: "fgPct",     label: "FG%",  width: 50 },
+  ];
 
-  const renderHighlight = (lineup, label, accentColor, icon) => {
-    if (!lineup) return null;
-    return (
-      <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: "18px 22px", flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-          {icon}
-          <span style={{ fontSize: 13, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</span>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-          {lineup.players.map((p) => (
-            <span key={p} style={{ fontSize: 12, fontWeight: 600, background: "var(--bg-tertiary)", padding: "4px 10px", borderRadius: 6 }}>
-              {p.split(" ").pop()}
-            </span>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 16 }}>
-          {[
-            { label: "NET", value: lineup.netRtg, color: lineup.netRtg > 0 ? "var(--accent-green)" : "var(--accent-red)" },
-            { label: "ORTG", value: lineup.ortg },
-            { label: "DRTG", value: lineup.drtg },
-            { label: "+/-", value: lineup.plusMinus, color: parseFloat(lineup.plusMinus) >= 0 ? "var(--accent-green)" : "var(--accent-red)" },
-            { label: "MIN", value: lineup.min },
-          ].map((s) => (
-            <div key={s.label} style={{ textAlign: "center" }}>
-              <div className="stat-number" style={{ fontSize: 15, fontWeight: 700, color: s.color || "var(--text-primary)" }}>{s.value}</div>
-              <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  const singleColumns = [
+    { key: "name",       label: "Player", width: "1fr", align: "left" },
+    { key: "gp",         label: "GP",  width: 44 },
+    { key: "mpg",        label: "MPG", width: 52 },
+    { key: "ppg",        label: "PPG", width: 52 },
+    { key: "rpg",        label: "RPG", width: 52 },
+    { key: "apg",        label: "APG", width: 52 },
+    { key: "fgPct",      label: "FG%", width: 54 },
+    { key: "plusMinus",  label: "+/-", width: 56 },
+  ];
+
+  const columns = groupSize === 1 ? singleColumns : multiColumns;
+  const firstColKey = groupSize === 1 ? "name" : "players";
+  const gridTemplate = columns.map((c) => (typeof c.width === "number" ? `${c.width}px` : c.width)).join(" ");
 
   return (
     <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 60px" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
           <Users size={24} style={{ color: "var(--accent-blue)" }} />
           Lineup Analyzer
         </h1>
 
-        {/* Team selector */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {Object.entries(TEAMS).filter(([abbr]) => LINEUP_DATA[abbr]).map(([abbr, t]) => (
-            <button
-              key={abbr}
-              onClick={() => { setSelectedTeam(abbr); setPlayerFilter([]); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: selectedTeam === abbr ? t.color : "var(--bg-secondary)",
-                border: `1px solid ${selectedTeam === abbr ? t.color : "var(--border-color)"}`,
-                borderRadius: 8, padding: "8px 14px", cursor: "pointer",
-                color: selectedTeam === abbr ? "white" : "var(--text-secondary)",
-                fontSize: 13, fontWeight: 600, fontFamily: "'Inter', sans-serif", transition: "all 0.2s",
-              }}
-            >
-              <div style={{ width: 18, height: 18, borderRadius: 4, background: selectedTeam === abbr ? "rgba(255,255,255,0.25)" : t.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: "white" }}>{abbr}</div>
-              {t.name}
-            </button>
-          ))}
-          {/* Hint for other teams */}
-          <span style={{ display: "flex", alignItems: "center", fontSize: 12, color: "var(--text-muted)", paddingLeft: 4 }}>
-            More teams coming soon
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {/* Team dropdown */}
+          <select
+            value={selectedTeam}
+            onChange={(e) => { setSelectedTeam(e.target.value); setPlayerFilter([]); }}
+            style={{
+              background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8,
+              padding: "8px 34px 8px 12px", fontSize: 13, fontWeight: 600, fontFamily: "'Inter', sans-serif",
+              color: "var(--text-primary)", cursor: "pointer", outline: "none",
+              appearance: "none", WebkitAppearance: "none",
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239e8878' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat", backgroundPosition: "calc(100% - 10px) center",
+            }}
+          >
+            <optgroup label="Western Conference">
+              {["Northwest", "Pacific", "Southwest"].flatMap((div) =>
+                Object.entries(TEAMS)
+                  .filter(([, t]) => t.division === div)
+                  .sort(([, a], [, b]) => a.name.localeCompare(b.name))
+                  .map(([abbr, t]) => <option key={abbr} value={abbr}>{t.city} {t.name}</option>)
+              )}
+            </optgroup>
+            <optgroup label="Eastern Conference">
+              {["Atlantic", "Central", "Southeast"].flatMap((div) =>
+                Object.entries(TEAMS)
+                  .filter(([, t]) => t.division === div)
+                  .sort(([, a], [, b]) => a.name.localeCompare(b.name))
+                  .map(([abbr, t]) => <option key={abbr} value={abbr}>{t.city} {t.name}</option>)
+              )}
+            </optgroup>
+          </select>
+
+          {/* Group size tabs */}
+          <div style={{ display: "flex", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                onClick={() => { setGroupSize(n); setSortKey(n === 1 ? "ppg" : "netRtg"); setSortDir("desc"); }}
+                style={{
+                  padding: "8px 14px", fontSize: 12, fontWeight: 700, fontFamily: "'Inter', sans-serif",
+                  cursor: "pointer", border: "none", transition: "all 0.15s",
+                  background: groupSize === n ? (team.color || "var(--accent-blue)") : "transparent",
+                  color: groupSize === n ? "white" : "var(--text-secondary)",
+                  borderRight: n < 5 ? "1px solid var(--border-color)" : "none",
+                }}
+              >
+                {n}-Man
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {!hasData ? (
-        <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>No lineup data available for this team.</p>
-        </div>
-      ) : (
+      {/* ── 1-Man view ── */}
+      {groupSize === 1 && (
         <>
-          {/* Player filter chips */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              Filter by player (select 0-5):
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {allPlayers.map((name) => {
-                const active = playerFilter.includes(name);
-                return (
-                  <button
-                    key={name}
-                    onClick={() => {
-                      if (active) {
-                        setPlayerFilter((f) => f.filter((n) => n !== name));
-                      } else if (playerFilter.length < 5) {
-                        setPlayerFilter((f) => [...f, name]);
-                      }
-                    }}
-                    style={{
-                      background: active ? team.color : "var(--bg-secondary)",
-                      border: `1px solid ${active ? team.color : "var(--border-color)"}`,
-                      borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                      color: active ? "white" : "var(--text-secondary)",
-                      fontSize: 12, fontWeight: 600, fontFamily: "'Inter', sans-serif",
-                      transition: "all 0.2s", opacity: !active && playerFilter.length >= 5 ? 0.4 : 1,
-                    }}
-                  >
-                    {name.split(" ").pop()}
-                  </button>
-                );
-              })}
-              {playerFilter.length > 0 && (
-                <button
-                  onClick={() => setPlayerFilter([])}
-                  style={{ background: "none", border: "1px solid var(--border-color)", borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: "var(--accent-red)", fontSize: 12, fontWeight: 600, fontFamily: "'Inter', sans-serif" }}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
+          <div style={{ marginBottom: 20, padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-color)", fontSize: 13, color: "var(--text-secondary)" }}>
+            Individual player stats for <strong style={{ color: "var(--text-primary)" }}>{team.city} {team.name}</strong>
+            {" — "}{singlePlayers.length} players
           </div>
 
-          {/* Best / Worst Highlights */}
-          <div style={{ display: "flex", gap: 16, marginBottom: 28 }}>
-            {renderHighlight(best5, "Best 5-Man Lineup", "var(--accent-green)", <TrendingUp size={14} style={{ color: "var(--accent-green)" }} />)}
-            {renderHighlight(worst5, "Worst 5-Man Lineup", "var(--accent-red)", <ChevronDown size={14} style={{ color: "var(--accent-red)" }} />)}
-          </div>
-
-          {/* Net Rating Chart */}
-          <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: 20, marginBottom: 28 }}>
-            <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
-              <BarChart3 size={14} style={{ color: "var(--accent-blue)" }} />
-              Net Rating — Top Lineups
-            </h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={chartData} barCategoryGap="18%">
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 10 }} />
-                <Tooltip content={<ChartTooltipContent />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-                <Bar dataKey="netRtg" name="Net Rtg" radius={[4, 4, 0, 0]} maxBarSize={36}>
-                  {chartData.map((d, i) => (
-                    <Cell key={i} fill={d.netRtg >= 0 ? team.color : "#ef4444"} opacity={d.netRtg >= 0 ? 1 : 0.7} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Sortable Lineup Table */}
           <div style={{ marginBottom: 28 }}>
             <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
               <Layers size={14} style={{ color: "var(--accent-blue)" }} />
-              All Lineup Combinations
-              <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)", marginLeft: 6 }}>
-                ({filteredCombos.length} lineup{filteredCombos.length !== 1 ? "s" : ""})
-              </span>
+              Player Stats
+              <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)", marginLeft: 6 }}>({sortedSinglePlayers.length} players)</span>
             </h3>
             <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden", overflowX: "auto" }}>
-              {/* Header */}
-              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, padding: "8px 14px", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)", textTransform: "uppercase", letterSpacing: "0.5px", userSelect: "none", minWidth: 620 }}>
+              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, padding: "8px 14px", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)", textTransform: "uppercase", letterSpacing: "0.5px", userSelect: "none", minWidth: 560 }}>
                 {columns.map((col) => (
                   <span
                     key={col.key}
-                    className={col.key !== "players" ? "stat-number" : ""}
-                    onClick={() => col.key !== "players" && handleSort(col.key)}
-                    style={{
-                      textAlign: col.key === "players" ? "left" : "center",
-                      cursor: col.key !== "players" ? "pointer" : "default",
-                      display: "flex", alignItems: "center",
-                      justifyContent: col.key === "players" ? "flex-start" : "center",
-                      color: sortKey === col.key ? "var(--accent-blue)" : undefined,
-                      transition: "color 0.15s",
-                    }}
+                    className={col.key !== "name" ? "stat-number" : ""}
+                    onClick={() => col.key !== "name" && handleSort(col.key)}
+                    style={{ textAlign: col.key === "name" ? "left" : "center", cursor: col.key !== "name" ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: col.key === "name" ? "flex-start" : "center", color: sortKey === col.key ? "var(--accent-blue)" : undefined }}
                   >
-                    {col.label}
-                    {col.key !== "players" && <SortIcon colKey={col.key} />}
+                    {col.label}{col.key !== "name" && <SortIcon colKey={col.key} />}
                   </span>
                 ))}
               </div>
-              {/* Rows */}
-              {filteredCombos.map((combo, idx) => {
-                const nr = combo.netRtg;
-                const pm = parseFloat(combo.plusMinus);
+              {sortedSinglePlayers.length === 0 && (
+                <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No player data for this team.</div>
+              )}
+              {sortedSinglePlayers.map((p, idx) => {
+                const pm = parseFloat(p.plusMinus) || 0;
                 return (
                   <div
-                    key={idx}
-                    style={{ display: "grid", gridTemplateColumns: gridTemplate, padding: "10px 14px", fontSize: 12, borderBottom: idx < filteredCombos.length - 1 ? "1px solid var(--border-color)" : "none", alignItems: "center", transition: "background 0.15s", minWidth: 620 }}
+                    key={p.playerId || idx}
+                    style={{ display: "grid", gridTemplateColumns: gridTemplate, padding: "10px 14px", fontSize: 12, borderBottom: idx < sortedSinglePlayers.length - 1 ? "1px solid var(--border-color)" : "none", alignItems: "center", transition: "background 0.15s", minWidth: 560 }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    {/* Players */}
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                      {combo.players.map((p) => (
-                        <span key={p} style={{ fontSize: 11, fontWeight: 600, background: playerFilter.includes(p) ? `${team.color}22` : "var(--bg-tertiary)", color: playerFilter.includes(p) ? team.color : "var(--text-primary)", padding: "2px 7px", borderRadius: 4 }}>
-                          {p.split(" ").pop()}
-                        </span>
-                      ))}
-                    </div>
-                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{combo.min}</span>
-                    <span className="stat-number" style={{ textAlign: "center", fontWeight: 700, color: nr > 0 ? "var(--accent-green)" : nr < 0 ? "var(--accent-red)" : "var(--text-secondary)" }}>{nr > 0 ? "+" : ""}{nr}</span>
-                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{combo.ortg}</span>
-                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{combo.drtg}</span>
-                    <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: pm >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{combo.plusMinus}</span>
-                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{combo.pts}</span>
-                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{combo.fgPct}</span>
+                    <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{p.name}</span>
+                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.gp}</span>
+                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{parseFloat(p.mpg).toFixed(1)}</span>
+                    <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: "var(--text-primary)" }}>{parseFloat(p.ppg).toFixed(1)}</span>
+                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{parseFloat(p.rpg).toFixed(1)}</span>
+                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{parseFloat(p.apg).toFixed(1)}</span>
+                    <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.fgPct ? (parseFloat(p.fgPct) * 100).toFixed(1) : "—"}</span>
+                    <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: pm >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                      {pm >= 0 ? `+${Math.abs(pm).toFixed(1)}` : `-${Math.abs(pm).toFixed(1)}`}
+                    </span>
                   </div>
                 );
               })}
-              {filteredCombos.length === 0 && (
-                <div style={{ padding: "24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-                  No lineups match the selected player filter.
-                </div>
-              )}
             </div>
           </div>
+        </>
+      )}
+
+      {/* ── Multi-man (2-5) view ── */}
+      {groupSize > 1 && (
+        <>
+          {loading && (
+            <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)", fontSize: 14 }}>
+              Loading {groupSize}-man lineup data…
+            </div>
+          )}
+          {error && !loading && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--accent-red)", fontSize: 14 }}>
+              Failed to load lineup data: {error}
+            </div>
+          )}
+          {!loading && !error && (
+            <>
+              {/* Minutes minimum qualifier */}
+              <div style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                  Min. Minutes:
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
+                  <input
+                    type="range"
+                    min={0}
+                    max={20}
+                    step={1}
+                    value={minMinutes}
+                    onChange={(e) => setMinMinutes(Number(e.target.value))}
+                    style={{ flex: 1, accentColor: team.color || "var(--accent-blue)", cursor: "pointer" }}
+                  />
+                  <span className="stat-number" style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", minWidth: 36, textAlign: "right" }}>
+                    {minMinutes === 20 ? "20+" : minMinutes}
+                  </span>
+                </div>
+              </div>
+
+              {/* Player filter chips */}
+              {allChipNames.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Filter by player (up to {groupSize}):
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {allChipNames.map((name) => {
+                      const active = playerFilter.includes(name);
+                      return (
+                        <button
+                          key={name}
+                          onClick={() => {
+                            if (active) setPlayerFilter((f) => f.filter((n) => n !== name));
+                            else if (playerFilter.length < groupSize) setPlayerFilter((f) => [...f, name]);
+                          }}
+                          style={{
+                            background: active ? team.color : "var(--bg-secondary)",
+                            border: `1px solid ${active ? team.color : "var(--border-color)"}`,
+                            borderRadius: 6, padding: "5px 11px", cursor: "pointer",
+                            color: active ? "white" : "var(--text-secondary)",
+                            fontSize: 12, fontWeight: 600, fontFamily: "'Inter', sans-serif",
+                            transition: "all 0.2s", opacity: !active && playerFilter.length >= groupSize ? 0.4 : 1,
+                          }}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                    {playerFilter.length > 0 && (
+                      <button onClick={() => setPlayerFilter([])} style={{ background: "none", border: "1px solid var(--border-color)", borderRadius: 6, padding: "5px 11px", cursor: "pointer", color: "var(--accent-red)", fontSize: 12, fontWeight: 600, fontFamily: "'Inter', sans-serif" }}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Lineup Table */}
+              <div style={{ marginBottom: 28 }}>
+                <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Layers size={14} style={{ color: "var(--accent-blue)" }} />
+                  {groupSize}-Man Lineup Combinations
+                  <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)", marginLeft: 6 }}>
+                    ({filteredLineups.length} lineup{filteredLineups.length !== 1 ? "s" : ""})
+                  </span>
+                </h3>
+                <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden", overflowX: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: gridTemplate, padding: "8px 14px", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)", textTransform: "uppercase", letterSpacing: "0.5px", userSelect: "none", minWidth: 620 }}>
+                    {columns.map((col) => (
+                      <span
+                        key={col.key}
+                        className={col.key !== firstColKey ? "stat-number" : ""}
+                        onClick={() => col.key !== firstColKey && handleSort(col.key)}
+                        style={{ textAlign: col.key === firstColKey ? "left" : "center", cursor: col.key !== firstColKey ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: col.key === firstColKey ? "flex-start" : "center", color: sortKey === col.key ? "var(--accent-blue)" : undefined, transition: "color 0.15s" }}
+                      >
+                        {col.label}{col.key !== firstColKey && <SortIcon colKey={col.key} />}
+                      </span>
+                    ))}
+                  </div>
+                  {filteredLineups.map((lineup, idx) => {
+                    const nr = parseFloat(lineup.netRtg);
+                    const pm = parseFloat(lineup.plusMinus);
+                    const playerNames = (lineup.players || "").split(" - ").map((s) => s.trim());
+                    return (
+                      <div
+                        key={idx}
+                        style={{ display: "grid", gridTemplateColumns: gridTemplate, padding: "10px 14px", fontSize: 12, borderBottom: idx < filteredLineups.length - 1 ? "1px solid var(--border-color)" : "none", alignItems: "center", transition: "background 0.15s", minWidth: 620 }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {playerNames.map((p) => (
+                            <span key={p} style={{ fontSize: 11, fontWeight: 600, background: playerFilter.includes(p) ? `${team.color}22` : "var(--bg-tertiary)", color: playerFilter.includes(p) ? team.color : "var(--text-primary)", padding: "2px 7px", borderRadius: 4 }}>
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                        <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{lineup.gp}</span>
+                        <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{lineup.min}</span>
+                        <span className="stat-number" style={{ textAlign: "center", fontWeight: 700, color: nr > 0 ? "var(--accent-green)" : nr < 0 ? "var(--accent-red)" : "var(--text-secondary)" }}>
+                          {nr > 0 ? "+" : ""}{lineup.netRtg}
+                        </span>
+                        <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{lineup.ortg}</span>
+                        <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{lineup.drtg}</span>
+                        <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: pm >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{lineup.plusMinus}</span>
+                        <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{lineup.pts}</span>
+                        <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{lineup.fgPct}</span>
+                      </div>
+                    );
+                  })}
+                  {filteredLineups.length === 0 && (
+                    <div style={{ padding: "24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+                      {lineups.length === 0 ? "No lineup data available. Run the proxy server to populate." : "No lineups match the selected player filter."}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
@@ -3585,10 +3565,22 @@ function ComparisonPage() {
   const [rightOpen, setRightOpen] = useState(false);
 
   const isPlayerMode = mode === "player";
-  const items = useMemo(() => isPlayerMode
-    ? PLAYERS.map((p) => ({ id: p.id, label: p.name, sub: `${TEAMS[p.team]?.city} ${TEAMS[p.team]?.name} · ${p.pos}`, color: TEAMS[p.team]?.color, abbr: p.team }))
-    : Object.entries(TEAMS).map(([abbr, t]) => ({ id: abbr, label: `${t.city} ${t.name}`, sub: `${t.division} · ${t.record}`, color: t.color, abbr })),
-  [isPlayerMode]);
+  const items = useMemo(() => {
+    if (!isPlayerMode) {
+      return Object.entries(TEAMS).map(([abbr, t]) => ({ id: abbr, label: `${t.city} ${t.name}`, sub: `${t.division} · ${t.record}`, color: t.color, abbr }));
+    }
+    const live = liveData.livePlayers;
+    if (live && live.length > 0) {
+      return live.map((lp) => ({
+        id: lp.playerId,
+        label: lp.name,
+        sub: `${TEAMS[lp.team]?.city || ""} ${TEAMS[lp.team]?.name || lp.team} · ${lp.pos || "—"}`,
+        color: TEAMS[lp.team]?.color || "#888",
+        abbr: lp.team,
+      }));
+    }
+    return PLAYERS.map((p) => ({ id: p.id, label: p.name, sub: `${TEAMS[p.team]?.city} ${TEAMS[p.team]?.name} · ${p.pos}`, color: TEAMS[p.team]?.color, abbr: p.team }));
+  }, [isPlayerMode, liveData.livePlayers]);
 
   const filterItems = (q) => {
     if (!q.trim()) return items;
@@ -3611,24 +3603,41 @@ function ComparisonPage() {
 
   // --- Stat computation helpers ---
   const getPlayerStats = (playerId) => {
+    // Live DB players (all ~530 players)
+    const lp = liveData.livePlayers?.find((p) => p.playerId === playerId);
+    if (lp) {
+      const pts = parseFloat(lp.ppg) || 0;
+      const reb = parseFloat(lp.rpg) || 0;
+      const ast = parseFloat(lp.apg) || 0;
+      const stl = parseFloat(lp.spg) || 0;
+      const blk = parseFloat(lp.bpg) || 0;
+      const fgPct = parseFloat(lp.fgPct) || 0;
+      const tpPct = parseFloat(lp.tpPct) || 0;
+      const ftPct = parseFloat(lp.ftPct) || 0;
+      const gp = lp.gp || 0;
+      const mpg = parseFloat(lp.mpg) || 36;
+      const per36Factor = 36 / mpg;
+      if (statMode === "perGame") {
+        return { gp, pts, reb, ast, stl, blk, fgPct, tpPct, ftPct };
+      } else if (statMode === "per36") {
+        return { gp, pts: +(pts * per36Factor).toFixed(1), reb: +(reb * per36Factor).toFixed(1), ast: +(ast * per36Factor).toFixed(1), stl: +(stl * per36Factor).toFixed(1), blk: +(blk * per36Factor).toFixed(1), fgPct, tpPct, ftPct };
+      } else {
+        return { gp, pts: +(pts * gp).toFixed(0), reb: +(reb * gp).toFixed(0), ast: +(ast * gp).toFixed(0), stl: +(stl * gp).toFixed(0), blk: +(blk * gp).toFixed(0), fgPct, tpPct, ftPct };
+      }
+    }
+    // Fallback: mock PLAYERS (8 players, used if live data not loaded)
     const p = PLAYERS.find((pl) => pl.id === playerId);
     if (!p) return null;
     const a = p.seasonAvg;
     const gp = p.gameLog.length;
-    // Estimate minutes per game from game log
-    const totalMin = p.gameLog.reduce((s, g) => {
-      const [m, sec] = g.min.split(":").map(Number);
-      return s + m + sec / 60;
-    }, 0);
-    const mpg = totalMin / gp;
-    const per36Factor = 36 / mpg;
-
+    const totalMin = p.gameLog.reduce((s, g) => { const [m, sec] = g.min.split(":").map(Number); return s + m + sec / 60; }, 0);
+    const per36Factor = 36 / (totalMin / gp);
     if (statMode === "perGame") {
-      return { pts: a.pts, reb: a.reb, ast: a.ast, stl: a.stl, blk: a.blk, fgPct: a.fgPct, tpPct: a.tpPct, ftPct: a.ftPct, per: a.per, ts: a.ts };
+      return { gp, pts: a.pts, reb: a.reb, ast: a.ast, stl: a.stl, blk: a.blk, fgPct: a.fgPct, tpPct: a.tpPct, ftPct: a.ftPct };
     } else if (statMode === "per36") {
-      return { pts: +(a.pts * per36Factor).toFixed(1), reb: +(a.reb * per36Factor).toFixed(1), ast: +(a.ast * per36Factor).toFixed(1), stl: +(a.stl * per36Factor).toFixed(1), blk: +(a.blk * per36Factor).toFixed(1), fgPct: a.fgPct, tpPct: a.tpPct, ftPct: a.ftPct, per: a.per, ts: a.ts };
+      return { gp, pts: +(a.pts * per36Factor).toFixed(1), reb: +(a.reb * per36Factor).toFixed(1), ast: +(a.ast * per36Factor).toFixed(1), stl: +(a.stl * per36Factor).toFixed(1), blk: +(a.blk * per36Factor).toFixed(1), fgPct: a.fgPct, tpPct: a.tpPct, ftPct: a.ftPct };
     } else {
-      return { pts: +(a.pts * gp).toFixed(0), reb: +(a.reb * gp).toFixed(0), ast: +(a.ast * gp).toFixed(0), stl: +(a.stl * gp).toFixed(0), blk: +(a.blk * gp).toFixed(0), fgPct: a.fgPct, tpPct: a.tpPct, ftPct: a.ftPct, per: a.per, ts: a.ts };
+      return { gp, pts: +(a.pts * gp).toFixed(0), reb: +(a.reb * gp).toFixed(0), ast: +(a.ast * gp).toFixed(0), stl: +(a.stl * gp).toFixed(0), blk: +(a.blk * gp).toFixed(0), fgPct: a.fgPct, tpPct: a.tpPct, ftPct: a.ftPct };
     }
   };
 
@@ -3664,6 +3673,7 @@ function ComparisonPage() {
 
   // Stat rows for comparison
   const playerStatRows = [
+    { key: "gp", label: "Games Played" },
     { key: "pts", label: "Points" },
     { key: "reb", label: "Rebounds" },
     { key: "ast", label: "Assists" },
@@ -3672,8 +3682,6 @@ function ComparisonPage() {
     { key: "fgPct", label: "FG%", pct: true },
     { key: "tpPct", label: "3P%", pct: true },
     { key: "ftPct", label: "FT%", pct: true },
-    { key: "per", label: "PER" },
-    { key: "ts", label: "TS%" },
   ];
 
   const teamStatRows = [
@@ -3696,16 +3704,16 @@ function ComparisonPage() {
   const radarData = useMemo(() => {
     if (!leftStats || !rightStats) return [];
     if (isPlayerMode) {
-      const maxes = { pts: 35, reb: 14, ast: 11, stl: 2.5, blk: 4, per: 35 };
+      const maxes = { pts: 35, reb: 14, ast: 11, stl: 2.5, blk: 4, fgPct: 65 };
       if (statMode === "per36") { maxes.pts = 40; maxes.reb = 16; maxes.ast = 13; }
-      if (statMode === "totals") { maxes.pts = 700; maxes.reb = 280; maxes.ast = 220; maxes.stl = 50; maxes.blk = 80; maxes.per = 35; }
+      if (statMode === "totals") { maxes.pts = 700; maxes.reb = 280; maxes.ast = 220; maxes.stl = 50; maxes.blk = 80; }
       return [
         { stat: "Scoring", left: Math.min(100, (leftStats.pts / maxes.pts) * 100), right: Math.min(100, (rightStats.pts / maxes.pts) * 100) },
         { stat: "Rebounds", left: Math.min(100, (leftStats.reb / maxes.reb) * 100), right: Math.min(100, (rightStats.reb / maxes.reb) * 100) },
         { stat: "Assists", left: Math.min(100, (leftStats.ast / maxes.ast) * 100), right: Math.min(100, (rightStats.ast / maxes.ast) * 100) },
         { stat: "Steals", left: Math.min(100, (leftStats.stl / maxes.stl) * 100), right: Math.min(100, (rightStats.stl / maxes.stl) * 100) },
         { stat: "Blocks", left: Math.min(100, (leftStats.blk / maxes.blk) * 100), right: Math.min(100, (rightStats.blk / maxes.blk) * 100) },
-        { stat: "Efficiency", left: Math.min(100, (leftStats.per / maxes.per) * 100), right: Math.min(100, (rightStats.per / maxes.per) * 100) },
+        { stat: "FG%", left: Math.min(100, (leftStats.fgPct / maxes.fgPct) * 100), right: Math.min(100, (rightStats.fgPct / maxes.fgPct) * 100) },
       ];
     } else {
       return [
@@ -3937,7 +3945,7 @@ function ComparisonPage() {
               {/* Legend */}
               <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 8, fontSize: 11, color: "var(--text-muted)" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <div style={{ width: 12, height: 12, borderRadius: 3, background: leftItem?.color || "#3b82f6" }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: leftItem?.color || "#e8590c" }} />
                   {leftItem?.label.split(" ").pop()}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -3948,10 +3956,10 @@ function ComparisonPage() {
               <ResponsiveContainer width="100%" height={320}>
                 <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="72%">
                   <PolarGrid stroke="rgba(255,255,255,0.1)" />
-                  <PolarAngleAxis dataKey="stat" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                  <PolarAngleAxis dataKey="stat" tick={{ fill: "#9e8878", fontSize: 11 }} />
                   <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                  <Radar name={leftItem?.label || "Left"} dataKey="left" stroke={leftItem?.color || "#3b82f6"} fill={leftItem?.color || "#3b82f6"} fillOpacity={0.2} strokeWidth={2} />
-                  <Radar name={rightItem?.label || "Right"} dataKey="right" stroke={rightItem?.color || "#ef4444"} fill={rightItem?.color || "#ef4444"} fillOpacity={0.2} strokeWidth={2} />
+                  <Radar name={leftItem?.label || "Left"} dataKey="left" stroke={leftItem?.color || "#e8590c"} fill={leftItem?.color || "#e8590c"} fillOpacity={0.2} strokeWidth={2} />
+                  <Radar name={rightItem?.label || "Right"} dataKey="right" stroke={rightItem?.color || "#dc2626"} fill={rightItem?.color || "#dc2626"} fillOpacity={0.2} strokeWidth={2} />
                   <Tooltip content={<ChartTooltipContent />} />
                 </RadarChart>
               </ResponsiveContainer>
@@ -4021,6 +4029,9 @@ function ComparisonPage() {
 // --- Team Browse Page ---
 function TeamBrowsePage({ onTeamSelect }) {
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState("conference"); // "conference" | "division"
+  const [confTab, setConfTab] = useState("West"); // "West" | "East"
+  const [divTab, setDivTab] = useState("Northwest");
 
   const allTeams = useMemo(() => {
     return Object.entries(TEAMS).map(([abbr, t]) => ({ abbr, ...t }));
@@ -4038,10 +4049,6 @@ function TeamBrowsePage({ onTeamSelect }) {
         t.division.toLowerCase().includes(q)
     );
   }, [search, allTeams]);
-
-  // Group by conference
-  const east = filtered.filter((t) => t.conference === "East");
-  const west = filtered.filter((t) => t.conference === "West");
 
   const renderCard = (t) => {
     const [w, l] = t.record.split("-").map(Number);
@@ -4065,24 +4072,7 @@ function TeamBrowsePage({ onTeamSelect }) {
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${t.color}, ${t.secondaryColor})` }} />
 
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          {/* Logo placeholder */}
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 12,
-              background: t.color,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 14,
-              fontWeight: 800,
-              color: "white",
-              flexShrink: 0,
-            }}
-          >
-            {t.abbr}
-          </div>
+          <TeamLogo abbr={t.abbr} size={52} style={{ borderRadius: 12, flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>
               {t.city} {t.name}
@@ -4109,53 +4099,119 @@ function TeamBrowsePage({ onTeamSelect }) {
     );
   };
 
+  const renderConferenceGrid = (conf) => {
+    const teams = filtered.filter((t) => t.conference === conf);
+    if (teams.length === 0) return <div style={{ textAlign: "center", padding: "60px 0" }}><p style={{ fontSize: 15, color: "var(--text-secondary)" }}>No teams found.</p></div>;
+    return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>{teams.map(renderCard)}</div>;
+  };
+
+  const renderDivisionGrid = (div) => {
+    const teams = filtered.filter((t) => t.division === div);
+    if (teams.length === 0) return <div style={{ textAlign: "center", padding: "60px 0" }}><p style={{ fontSize: 15, color: "var(--text-secondary)" }}>No teams found.</p></div>;
+    return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>{teams.map(renderCard)}</div>;
+  };
+
   return (
     <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 60px" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
           <Shield size={24} style={{ color: "var(--accent-blue)" }} />
           Teams
         </h1>
-        <div style={{ position: "relative" }}>
-          <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search teams..."
-            style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "10px 14px 10px 38px", color: "var(--text-primary)", fontSize: 14, width: 280, outline: "none", fontFamily: "'Inter', sans-serif", transition: "border-color 0.2s" }}
-            onFocus={(e) => (e.target.style.borderColor = "var(--accent-blue)")}
-            onBlur={(e) => (e.target.style.borderColor = "var(--border-color)")}
-          />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Search */}
+          <div style={{ position: "relative" }}>
+            <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search teams..."
+              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "8px 14px 8px 36px", color: "var(--text-primary)", fontSize: 13, width: 220, outline: "none", fontFamily: "'Inter', sans-serif", transition: "border-color 0.2s" }}
+              onFocus={(e) => (e.target.style.borderColor = "var(--accent-blue)")}
+              onBlur={(e) => (e.target.style.borderColor = "var(--border-color)")}
+            />
+          </div>
+          {/* West / East tabs — conference mode only */}
+          {viewMode === "conference" && (
+            <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
+              {["West", "East"].map((conf) => (
+                <button
+                  key={conf}
+                  onClick={() => setConfTab(conf)}
+                  style={{
+                    background: confTab === conf ? "var(--accent-amber)" : "transparent",
+                    border: "none",
+                    padding: "8px 18px",
+                    color: confTab === conf ? "white" : "var(--text-secondary)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "'Inter', sans-serif",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {conf}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Division selector — division mode only */}
+          {viewMode === "division" && (
+            <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
+              {["Northwest", "Pacific", "Southwest", "Atlantic", "Central", "Southeast"].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDivTab(d)}
+                  style={{
+                    background: divTab === d ? "var(--accent-amber)" : "transparent",
+                    border: "none",
+                    padding: "8px 12px",
+                    color: divTab === d ? "white" : "var(--text-secondary)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "'Inter', sans-serif",
+                    transition: "all 0.2s",
+                    borderRight: "1px solid var(--border-color)",
+                  }}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Conference / Division toggle */}
+          <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
+            {[{ key: "conference", label: "Conference" }, { key: "division", label: "Division" }].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setViewMode(opt.key)}
+                style={{
+                  background: viewMode === opt.key ? "var(--accent-blue)" : "transparent",
+                  border: "none",
+                  padding: "8px 16px",
+                  color: viewMode === opt.key ? "white" : "var(--text-secondary)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "'Inter', sans-serif",
+                  transition: "all 0.2s",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Eastern Conference */}
-      {east.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <h2 className="font-display" style={{ fontSize: 17, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 8, color: "var(--text-primary)" }}>
-            <Trophy size={16} style={{ color: "var(--accent-amber)" }} />
-            Eastern Conference
-          </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
-            {east.map(renderCard)}
-          </div>
-        </div>
-      )}
-
-      {/* Western Conference */}
-      {west.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <h2 className="font-display" style={{ fontSize: 17, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 8, color: "var(--text-primary)" }}>
-            <Trophy size={16} style={{ color: "var(--accent-amber)" }} />
-            Western Conference
-          </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
-            {west.map(renderCard)}
-          </div>
-        </div>
-      )}
+      {/* Grid */}
+      {viewMode === "conference"
+        ? renderConferenceGrid(confTab)
+        : renderDivisionGrid(divTab)
+      }
 
       {filtered.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 0" }}>
@@ -4303,9 +4359,9 @@ function TeamDetailPage({ teamAbbr, onBack }) {
               </div>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={detail.ratingHistory}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="game" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 9 }} />
-                  <YAxis domain={["auto", "auto"]} axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 10 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
+                  <XAxis dataKey="game" axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 9 }} />
+                  <YAxis domain={["auto", "auto"]} axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 10 }} />
                   <Tooltip content={<ChartTooltipContent />} />
                   <Line type="monotone" dataKey="ortg" stroke="#22c55e" strokeWidth={2.5} dot={{ r: 3 }} name="ORtg" />
                   <Line type="monotone" dataKey="drtg" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 3 }} name="DRtg" />
@@ -4457,7 +4513,27 @@ function TeamDetailPage({ teamAbbr, onBack }) {
 function GameDetailPage({ gameId, onBack }) {
   const liveData = useLiveData();
   const game = liveData.scoreboard.find((g) => g.id === gameId);
-  const detail = mockData.gameDetails[gameId];
+  const mockDetail = mockData.gameDetails[gameId];
+  const [liveBoxScore, setLiveBoxScore] = useState(null);
+  const [boxScoreLoading, setBoxScoreLoading] = useState(false);
+
+  // Fetch live box score from NBA API when no mock detail exists
+  useEffect(() => {
+    if (!game || mockDetail || !liveData.isLive) return;
+    if (game.status === "UPCOMING") return;
+    let cancelled = false;
+    setBoxScoreLoading(true);
+    // Always bust the in-memory + localStorage cache so we never show stale
+    // empty-player data that was cached while the game was still live.
+    clearEndpointCache("boxscoretraditionalv3");
+    fetchBoxScore(gameId)
+      .then((data) => { if (!cancelled && data) setLiveBoxScore(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setBoxScoreLoading(false); });
+    return () => { cancelled = true; };
+  }, [gameId, game?.status, liveData.isLive, mockDetail]);
+
+  const detail = mockDetail || liveBoxScore;
 
   if (!game) {
     return (
@@ -4476,22 +4552,29 @@ function GameDetailPage({ gameId, onBack }) {
   const isFinal = game.status === "FINAL";
   const hasDetail = !!detail;
 
-  // Team comparison data for recharts
-  const comparisonData = hasDetail
-    ? [
-        { stat: "FG%", home: detail.teamStats[game.homeTeam].fgPct, away: detail.teamStats[game.awayTeam].fgPct },
-        { stat: "3P%", home: detail.teamStats[game.homeTeam].threePct, away: detail.teamStats[game.awayTeam].threePct },
-        { stat: "FT%", home: detail.teamStats[game.homeTeam].ftPct, away: detail.teamStats[game.awayTeam].ftPct },
-        { stat: "REB", home: detail.teamStats[game.homeTeam].rebounds, away: detail.teamStats[game.awayTeam].rebounds },
-        { stat: "AST", home: detail.teamStats[game.homeTeam].assists, away: detail.teamStats[game.awayTeam].assists },
-        { stat: "TOV", home: detail.teamStats[game.homeTeam].turnovers, away: detail.teamStats[game.awayTeam].turnovers },
-        { stat: "STL", home: detail.teamStats[game.homeTeam].steals, away: detail.teamStats[game.awayTeam].steals },
-        { stat: "BLK", home: detail.teamStats[game.homeTeam].blocks, away: detail.teamStats[game.awayTeam].blocks },
-        { stat: "PIP", home: detail.teamStats[game.homeTeam].pointsInPaint, away: detail.teamStats[game.awayTeam].pointsInPaint },
-        { stat: "FBP", home: detail.teamStats[game.homeTeam].fastBreakPts, away: detail.teamStats[game.awayTeam].fastBreakPts },
-        { stat: "Bench", home: detail.teamStats[game.homeTeam].benchPts, away: detail.teamStats[game.awayTeam].benchPts },
-      ]
-    : [];
+  // Use tricodes from box score response (may differ from scoreboard tricodes)
+  const homeKey = detail?.homeTricode || game.homeTeam;
+  const awayKey = detail?.awayTricode || game.awayTeam;
+  const homeStats = detail?.teamStats?.[homeKey];
+  const awayStats = detail?.teamStats?.[awayKey];
+
+  // Cumulative score line chart — built from per-period scores in the scoreboard data
+  const PERIOD_LABELS = ["Q1", "Q2", "Q3", "Q4", "OT1", "OT2", "OT3"];
+  const periodChartData = useMemo(() => {
+    const hp = game.homePeriods || [];
+    const ap = game.awayPeriods || [];
+    if (!hp.length && !ap.length) return [];
+    const len = Math.max(hp.length, ap.length);
+    let homeRunning = 0, awayRunning = 0;
+    // Start at 0 before Q1, then accumulate each period
+    const points = [{ q: "Start", home: 0, away: 0 }];
+    for (let i = 0; i < len; i++) {
+      homeRunning += hp[i] ?? 0;
+      awayRunning += ap[i] ?? 0;
+      points.push({ q: PERIOD_LABELS[i] || `P${i + 1}`, home: homeRunning, away: awayRunning });
+    }
+    return points;
+  }, [game.homePeriods, game.awayPeriods]);
 
   const boxScoreCols = [
     { key: "name", label: "Player", width: "1fr", align: "left" },
@@ -4515,25 +4598,30 @@ function GameDetailPage({ gameId, onBack }) {
     .join(" ");
 
   const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
-          <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--text-primary)" }}>{label}</div>
-          {payload.map((p) => (
+    if (!active || !payload?.length) return null;
+    return (
+      <div style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--text-primary)" }}>{label}</div>
+        {payload.map((p) => {
+          const color = p.stroke || p.fill;
+          const teamAbbr = p.dataKey === "home" ? game.homeTeam : game.awayTeam;
+          const teamObj = TEAMS[teamAbbr];
+          return (
             <div key={p.dataKey} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: p.fill }} />
+              <div style={{ width: 20, height: 3, borderRadius: 2, background: color }} />
               <span style={{ color: "var(--text-secondary)" }}>
-                {p.dataKey === "home" ? game.homeTeam : game.awayTeam}: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{p.value}</span>
+                {teamObj ? `${teamObj.city} ${teamObj.name}` : teamAbbr}:{" "}
+                <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{p.value}</span>
               </span>
             </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
+          );
+        })}
+      </div>
+    );
   };
 
   const renderBoxScore = (teamAbbr, players) => {
+    if (!players || players.length === 0) return null;
     const team = TEAMS[teamAbbr];
     return (
       <div style={{ marginBottom: 28 }}>
@@ -4548,22 +4636,7 @@ function GameDetailPage({ gameId, onBack }) {
             gap: 8,
           }}
         >
-          <div
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 5,
-              background: team.color,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 8,
-              fontWeight: 800,
-              color: "white",
-            }}
-          >
-            {teamAbbr}
-          </div>
+          <TeamLogo abbr={teamAbbr} size={22} />
           {team.city} {team.name}
         </h3>
         <div
@@ -4705,10 +4778,12 @@ function GameDetailPage({ gameId, onBack }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 48 }}>
           {/* Away */}
           <div style={{ textAlign: "center", minWidth: 160 }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, background: awayTeam.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "white", margin: "0 auto 10px" }}>{game.awayTeam}</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{awayTeam.city}</div>
-            <div style={{ fontSize: 15, color: "var(--text-secondary)" }}>{awayTeam.name}</div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{awayTeam.record}</div>
+            <div style={{ margin: "0 auto 10px", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <TeamLogo abbr={game.awayTeam} size={56} />
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{awayTeam?.city}</div>
+            <div style={{ fontSize: 15, color: "var(--text-secondary)" }}>{awayTeam?.name}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{awayTeam?.record}</div>
           </div>
           {/* Score */}
           <div style={{ textAlign: "center" }}>
@@ -4727,10 +4802,12 @@ function GameDetailPage({ gameId, onBack }) {
           </div>
           {/* Home */}
           <div style={{ textAlign: "center", minWidth: 160 }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, background: homeTeam.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "white", margin: "0 auto 10px" }}>{game.homeTeam}</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{homeTeam.city}</div>
-            <div style={{ fontSize: 15, color: "var(--text-secondary)" }}>{homeTeam.name}</div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{homeTeam.record}</div>
+            <div style={{ margin: "0 auto 10px", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <TeamLogo abbr={game.homeTeam} size={56} />
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{homeTeam?.city}</div>
+            <div style={{ fontSize: 15, color: "var(--text-secondary)" }}>{homeTeam?.name}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{homeTeam?.record}</div>
           </div>
         </div>
 
@@ -4750,8 +4827,8 @@ function GameDetailPage({ gameId, onBack }) {
               <tbody>
                 <tr style={{ borderTop: "1px solid var(--border-color)" }}>
                   <td style={{ fontWeight: 600, padding: "8px 0", display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 18, height: 18, borderRadius: 4, background: awayTeam.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: "white" }}>{game.awayTeam}</div>
-                    {awayTeam.name}
+                    <TeamLogo abbr={game.awayTeam} size={18} />
+                    {awayTeam?.name}
                   </td>
                   {game.quarterScores.away.map((s, i) => (
                     <td key={i} className="stat-number" style={{ textAlign: "center", padding: "8px 8px", color: s > game.quarterScores.home[i] ? "var(--text-primary)" : "var(--text-muted)" }}>{s}</td>
@@ -4760,8 +4837,8 @@ function GameDetailPage({ gameId, onBack }) {
                 </tr>
                 <tr style={{ borderTop: "1px solid var(--border-color)" }}>
                   <td style={{ fontWeight: 600, padding: "8px 0", display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 18, height: 18, borderRadius: 4, background: homeTeam.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: "white" }}>{game.homeTeam}</div>
-                    {homeTeam.name}
+                    <TeamLogo abbr={game.homeTeam} size={18} />
+                    {homeTeam?.name}
                   </td>
                   {game.quarterScores.home.map((s, i) => (
                     <td key={i} className="stat-number" style={{ textAlign: "center", padding: "8px 8px", color: s > game.quarterScores.away[i] ? "var(--text-primary)" : "var(--text-muted)" }}>{s}</td>
@@ -4801,7 +4878,7 @@ function GameDetailPage({ gameId, onBack }) {
                     gap: 16,
                   }}
                 >
-                  <div style={{ width: 48, height: 48, borderRadius: 12, background: team.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white", flexShrink: 0 }}>{teamAbbr}</div>
+                  <TeamLogo abbr={teamAbbr} size={48} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>{p.name}</div>
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{team.city} {team.name}</div>
@@ -4827,53 +4904,33 @@ function GameDetailPage({ gameId, onBack }) {
         </div>
       )}
 
-      {/* Team Comparison Chart (recharts) */}
-      {hasDetail && (
+      {/* Score Progression Line Chart */}
+      {periodChartData.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
             <BarChart3 size={18} style={{ color: "var(--accent-blue)" }} />
-            Team Comparison
+            Score Progression
           </h2>
-          <div
-            style={{
-              background: "var(--bg-secondary)",
-              borderRadius: 12,
-              border: "1px solid var(--border-color)",
-              padding: "24px 20px",
-            }}
-          >
-            {/* Legend */}
+          <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: "24px 20px" }}>
             <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: homeTeam.color }} />
-                {homeTeam.city} {homeTeam.name} (Home)
+                <div style={{ width: 24, height: 3, borderRadius: 2, background: homeTeam?.color }} />
+                {homeTeam?.city} {homeTeam?.name} (Home)
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: awayTeam.color }} />
-                {awayTeam.city} {awayTeam.name} (Away)
+                <div style={{ width: 24, height: 3, borderRadius: 2, background: awayTeam?.color }} />
+                {awayTeam?.city} {awayTeam?.name} (Away)
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={comparisonData} barGap={4} barCategoryGap="20%">
-                <XAxis
-                  dataKey="stat"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: "#94a3b8", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
-                />
-                <YAxis hide />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-                <Bar dataKey="home" radius={[4, 4, 0, 0]} maxBarSize={28}>
-                  {comparisonData.map((_, i) => (
-                    <Cell key={i} fill={homeTeam.color} />
-                  ))}
-                </Bar>
-                <Bar dataKey="away" radius={[4, 4, 0, 0]} maxBarSize={28}>
-                  {comparisonData.map((_, i) => (
-                    <Cell key={i} fill={awayTeam.color} opacity={0.7} />
-                  ))}
-                </Bar>
-              </BarChart>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={periodChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
+                <XAxis dataKey="q" axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 11 }} domain={["auto", "auto"]} />
+                <Tooltip content={<CustomTooltip />} />
+                <Line type="monotone" dataKey="home" name="home" stroke={homeTeam?.color} strokeWidth={2.5} dot={{ r: 5, fill: homeTeam?.color, strokeWidth: 0 }} activeDot={{ r: 7 }} />
+                <Line type="monotone" dataKey="away" name="away" stroke={awayTeam?.color} strokeWidth={2.5} dot={{ r: 5, fill: awayTeam?.color, strokeWidth: 0 }} activeDot={{ r: 7 }} />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -4886,19 +4943,25 @@ function GameDetailPage({ gameId, onBack }) {
             <Layers size={18} style={{ color: "var(--accent-blue)" }} />
             Box Score
           </h2>
-          {renderBoxScore(game.awayTeam, detail.boxScore[game.awayTeam])}
-          {renderBoxScore(game.homeTeam, detail.boxScore[game.homeTeam])}
+          {renderBoxScore(game.awayTeam, detail.boxScore?.[awayKey])}
+          {renderBoxScore(game.homeTeam, detail.boxScore?.[homeKey])}
         </div>
       )}
 
-      {/* Fallback for games without detailed data */}
+      {/* Loading / fallback for games without detailed data */}
       {!hasDetail && game.status !== "UPCOMING" && (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
           <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <BarChart3 size={28} style={{ color: "var(--accent-blue)" }} />
           </div>
-          <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>Detailed box score data not available for this game.</p>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>Try the LAL vs GSW game for full detail.</p>
+          {boxScoreLoading ? (
+            <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>Loading box score…</p>
+          ) : (
+            <>
+              <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>Box score data not available for this game.</p>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>Data may not yet be available from the NBA API.</p>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -4910,6 +4973,8 @@ function StandingsPage() {
   const TOTAL_GAMES = 82;
   const liveData = useLiveData();
   const [viewMode, setViewMode] = useState("conference"); // "conference" | "division"
+  const [confTab, setConfTab] = useState("West"); // "East" | "West"
+  const [divTab, setDivTab] = useState("Atlantic"); // one of the 6 divisions
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
 
   const handleSort = (key) => {
@@ -5167,23 +5232,7 @@ function StandingsPage() {
                   </span>
                   {/* Team */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 5,
-                        background: team.color,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 8,
-                        fontWeight: 800,
-                        color: "white",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {row.team}
-                    </div>
+                    <TeamLogo abbr={row.team} size={24} />
                     <span style={{ fontWeight: 500, fontSize: 13 }}>
                       {team.city} {team.name}
                     </span>
@@ -5356,19 +5405,11 @@ function StandingsPage() {
       });
     });
 
-    const divisionOrder = [
-      "Atlantic",
-      "Central",
-      "Southeast",
-      "Northwest",
-      "Pacific",
-      "Southwest",
-    ];
-
-    return divisionOrder.map((div) => {
-      const teams = sortTeams(divisions[div] || []);
-      return (
-        <div key={div} style={{ marginBottom: 24 }}>
+    const teams = sortTeams(divisions[divTab] || []);
+    const div = divTab;
+    // Render only the selected division
+    return (
+      <div key={div} style={{ marginBottom: 24 }}>
           <h3
             className="font-display"
             style={{
@@ -5480,25 +5521,9 @@ function StandingsPage() {
                     {idx + 1}
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 5,
-                        background: team.color,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 8,
-                        fontWeight: 800,
-                        color: "white",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {row.team}
-                    </div>
+                    <TeamLogo abbr={row.team} size={24} />
                     <span style={{ fontWeight: 500, fontSize: 13 }}>
-                      {team.name}
+                      {team.city} {team.name}
                     </span>
                     {isStreakHot && (
                       <Flame size={12} style={{ color: "var(--accent-amber)", flexShrink: 0 }} />
@@ -5521,8 +5546,7 @@ function StandingsPage() {
             })}
           </div>
         </div>
-      );
-    });
+    );
   };
 
   return (
@@ -5556,47 +5580,85 @@ function StandingsPage() {
           <Trophy size={24} style={{ color: "var(--accent-amber)" }} />
           Standings
         </h1>
-        {/* View Toggle */}
-        <div
-          style={{
-            display: "flex",
-            background: "var(--bg-secondary)",
-            border: "1px solid var(--border-color)",
-            borderRadius: 8,
-            overflow: "hidden",
-          }}
-        >
-          {[
-            { key: "conference", label: "Conference" },
-            { key: "division", label: "Division" },
-          ].map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => {
-                setViewMode(opt.key);
-                setSortConfig({ key: null, direction: null });
-              }}
-              style={{
-                background:
-                  viewMode === opt.key
-                    ? "var(--accent-blue)"
-                    : "transparent",
-                border: "none",
-                padding: "8px 20px",
-                color:
-                  viewMode === opt.key
-                    ? "white"
-                    : "var(--text-secondary)",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "'Inter', sans-serif",
-                transition: "all 0.2s",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
+        {/* View Toggles */}
+        <div style={{ display: "flex", gap: 8 }}>
+          {/* East / West — only visible in conference mode */}
+          {viewMode === "conference" && (
+            <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
+              {["West", "East"].map((conf) => (
+                <button
+                  key={conf}
+                  onClick={() => setConfTab(conf)}
+                  style={{
+                    background: confTab === conf ? "var(--accent-amber)" : "transparent",
+                    border: "none",
+                    padding: "8px 18px",
+                    color: confTab === conf ? "white" : "var(--text-secondary)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "'Inter', sans-serif",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {conf}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Division selector — only visible in division mode */}
+          {viewMode === "division" && (
+            <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
+              {["Atlantic", "Central", "Southeast", "Northwest", "Pacific", "Southwest"].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDivTab(d)}
+                  style={{
+                    background: divTab === d ? "var(--accent-amber)" : "transparent",
+                    border: "none",
+                    padding: "8px 14px",
+                    color: divTab === d ? "white" : "var(--text-secondary)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "'Inter', sans-serif",
+                    transition: "all 0.2s",
+                    borderRight: "1px solid var(--border-color)",
+                  }}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Conference / Division */}
+          <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
+            {[
+              { key: "conference", label: "Conference" },
+              { key: "division", label: "Division" },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => {
+                  setViewMode(opt.key);
+                  setSortConfig({ key: null, direction: null });
+                }}
+                style={{
+                  background: viewMode === opt.key ? "var(--accent-blue)" : "transparent",
+                  border: "none",
+                  padding: "8px 20px",
+                  color: viewMode === opt.key ? "white" : "var(--text-secondary)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "'Inter', sans-serif",
+                  transition: "all 0.2s",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -5613,10 +5675,7 @@ function StandingsPage() {
 
       {/* Tables */}
       {viewMode === "conference" ? (
-        <>
-          {renderConferenceTable("East", liveData.standings.East)}
-          {renderConferenceTable("West", liveData.standings.West)}
-        </>
+        renderConferenceTable(confTab, liveData.standings[confTab])
       ) : (
         renderDivisionView()
       )}
@@ -5690,59 +5749,6 @@ function HomePage({ onGameClick, onPlayerClick, onNavigate }) {
             </div>
           </section>
 
-          {/* Standings Snapshot */}
-          <section>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 16,
-              }}
-            >
-              <h2
-                className="font-display"
-                style={{
-                  fontSize: 20,
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <Trophy size={18} style={{ color: "var(--accent-amber)" }} />
-                Standings
-              </h2>
-              <button
-                onClick={() => onNavigate("standings")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--accent-blue)",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                View Full Standings
-                <ArrowRight size={14} />
-              </button>
-            </div>
-            <div style={{ display: "flex", gap: 16 }}>
-              <StandingsTable
-                conference="East"
-                teams={liveData.standings.East}
-              />
-              <StandingsTable
-                conference="West"
-                teams={liveData.standings.West}
-              />
-            </div>
-          </section>
         </div>
 
         {/* Right Column — League Leaders */}
@@ -5777,20 +5783,22 @@ function LiveDataProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
+    let pollInterval = null;
 
     async function loadLiveData() {
       const errs = [];
       let anySuccess = false;
 
-      // Quick check if proxy is reachable (abort after 2s)
+      // Quick check if the server is reachable
       try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 2000);
-        await fetch("/api/nba/leaguestandingsv3?LeagueID=00&Season=2024-25&SeasonType=Regular+Season", { signal: ctrl.signal, method: "HEAD" }).catch(() => { throw new Error("Proxy unreachable"); });
+        const timer = setTimeout(() => ctrl.abort(), 3000);
+        const ping = await fetch("/api/db/status", { signal: ctrl.signal }).catch(() => { throw new Error("Server unreachable"); });
         clearTimeout(timer);
+        if (!ping.ok) throw new Error("Server error");
       } catch {
-        console.warn("NBA proxy not running — using mock data");
-        if (!cancelled) setDataSource("mock");
+        console.warn("Courtside server not running — no data available");
+        if (!cancelled) setDataSource("offline");
         return;
       }
 
@@ -5829,6 +5837,19 @@ function LiveDataProvider({ children }) {
       if (scoreboardRes.status === "fulfilled" && scoreboardRes.value.length > 0) {
         setLiveScoreboard(scoreboardRes.value);
         anySuccess = true;
+
+        // Start 30-second polling if any games are live
+        const hasLive = scoreboardRes.value.some((g) => g.status === "LIVE");
+        if (hasLive && !pollInterval) {
+          pollInterval = setInterval(async () => {
+            if (cancelled) return;
+            try {
+              clearEndpointCache("scoreboardv3");
+              const fresh = await fetchScoreboard();
+              if (!cancelled && fresh.length > 0) setLiveScoreboard(fresh);
+            } catch {}
+          }, 30000);
+        }
       } else if (scoreboardRes.status === "rejected") {
         errs.push(`Scoreboard: ${scoreboardRes.reason?.message}`);
       }
@@ -5838,26 +5859,34 @@ function LiveDataProvider({ children }) {
     }
 
     loadLiveData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, []);
 
-  // Transform live leaders keys to match LeagueLeaders component format
+  // Transform DB leaders keys (lowercase) to display keys (Title case)
+  // DB returns: { points: [...], rebounds: [...], threePointers: [...] }
+  // LeagueLeaders component expects: { Points: [...], Rebounds: [...], "3-Pointers": [...] }
   const leagueLeaders = useMemo(() => {
-    if (!liveLeaders) return mockData.leagueLeaders;
-    const keyMap = { points: "Points", rebounds: "Rebounds", assists: "Assists", steals: "Steals", blocks: "Blocks", threePointers: "3-Pointers" };
+    if (!liveLeaders) return {};
+    const keyMap = {
+      points: "Points", rebounds: "Rebounds", assists: "Assists",
+      steals: "Steals", blocks: "Blocks", threePointers: "3-Pointers",
+    };
     const out = {};
     Object.entries(liveLeaders).forEach(([k, v]) => {
-      out[keyMap[k] || k] = v;
+      if (Array.isArray(v) && v.length > 0) out[keyMap[k] || k] = v;
     });
     return out;
   }, [liveLeaders]);
 
   const value = useMemo(
     () => ({
-      standings: liveStandings || mockData.standings,
-      leaders: liveLeaders || mockData.leaders,
+      standings: liveStandings || { East: [], West: [] },
+      leaders: liveLeaders || {},
       leagueLeaders,
-      scoreboard: liveScoreboard || mockData.scoreboard,
+      scoreboard: liveScoreboard || [],
       livePlayers,
       dataSource,
       errors,
@@ -5889,10 +5918,10 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0e17", color: "#e2e8f0", fontFamily: "'Inter', sans-serif", padding: 32 }}>
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#e8ddd0", color: "#1c1309", fontFamily: "'Inter', sans-serif", padding: 32 }}>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 12 }}>Something went wrong</h1>
-          <p style={{ color: "#94a3b8", marginBottom: 20, maxWidth: 500, textAlign: "center" }}>{this.state.error?.message || "An unexpected error occurred."}</p>
-          <button onClick={() => this.setState({ hasError: false, error: null })} style={{ background: "#3b82f6", color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
+          <p style={{ color: "#9e8878", marginBottom: 20, maxWidth: 500, textAlign: "center" }}>{this.state.error?.message || "An unexpected error occurred."}</p>
+          <button onClick={() => this.setState({ hasError: false, error: null })} style={{ background: "#e8590c", color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
             Try Again
           </button>
         </div>
@@ -5922,6 +5951,7 @@ function CourtsideAppInner() {
   const [showAIModal, setShowAIModal] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
+  const [selectedLivePlayer, setSelectedLivePlayer] = useState(null);
   const [selectedTeamAbbr, setSelectedTeamAbbr] = useState(null);
 
   const handleGameClick = (gameId) => {
@@ -5957,8 +5987,9 @@ function CourtsideAppInner() {
       case "players":
         return (
           <PlayerBrowsePage
-            onPlayerSelect={(id) => {
+            onPlayerSelect={(id, playerObj) => {
               setSelectedPlayerId(id);
+              setSelectedLivePlayer(playerObj?.isMock ? null : (playerObj || null));
               setCurrentPage("playerDetail");
             }}
           />
@@ -5967,6 +5998,7 @@ function CourtsideAppInner() {
         return (
           <PlayerDetailPage
             playerId={selectedPlayerId}
+            livePlayerData={selectedLivePlayer}
             onBack={(page) => setCurrentPage(page || "players")}
           />
         );
@@ -6038,19 +6070,6 @@ function CourtsideAppInner() {
         />
         <main key={currentPage + (selectedPlayerId || "") + (selectedTeamAbbr || "") + (selectedGameId || "")} className="page-transition" style={{ flex: 1 }}>{renderPage()}</main>
         <Footer />
-        {/* Data source indicator */}
-        <div style={{ position: "fixed", bottom: 60, right: 16, zIndex: 40 }}>
-          <div style={{
-            background: liveData.isLive ? "rgba(34,197,94,0.15)" : liveData.dataSource === "loading" ? "rgba(59,130,246,0.15)" : "rgba(245,158,11,0.15)",
-            border: `1px solid ${liveData.isLive ? "rgba(34,197,94,0.3)" : liveData.dataSource === "loading" ? "rgba(59,130,246,0.3)" : "rgba(245,158,11,0.3)"}`,
-            borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 600,
-            color: liveData.isLive ? "var(--accent-green)" : liveData.dataSource === "loading" ? "var(--accent-blue)" : "var(--accent-amber)",
-            display: "flex", alignItems: "center", gap: 6,
-          }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
-            {liveData.dataSource === "loading" ? "Loading data..." : liveData.isLive ? "Live NBA Data" : "Mock Data"}
-          </div>
-        </div>
         <MobileBottomNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
         {showAIModal && <AIChatPanel onClose={() => setShowAIModal(false)} />}
       </div>
