@@ -5,18 +5,44 @@
 const API_BASE = "/api/nba";
 
 // Current season
-const SEASON = "2024-25";
+const SEASON = "2025-26";
+
+// ---------------------------------------------------------------------------
+// Abbreviation normalization — NBA API sometimes returns non-standard tricodes
+// ---------------------------------------------------------------------------
+const ABBR_REMAP = {
+  NY:   "NYK",  // New York Knicks
+  BRK:  "BKN",  // Brooklyn Nets
+  BRO:  "BKN",  // Brooklyn Nets (city-substring fallback)
+  NEW:  "NYK",  // New York Knicks (city-substring fallback)
+  GS:   "GSW",  // Golden State Warriors
+  GOL:  "GSW",  // Golden State (city-substring fallback)
+  SA:   "SAS",  // San Antonio Spurs
+  SAN:  "SAS",  // San Antonio (city-substring fallback)
+  NO:   "NOP",  // New Orleans Pelicans
+  PHO:  "PHX",  // Phoenix Suns
+  OKL:  "OKC",  // Oklahoma City Thunder (city-substring fallback)
+  LA:   "LAC",  // LA Clippers (short city name)
+  LOS:  "LAL",  // Los Angeles Lakers (city-substring fallback)
+  UTA:  "UTA",  // already correct, no-op
+};
+
+function normalizeAbbr(abbr) {
+  if (!abbr) return abbr;
+  return ABBR_REMAP[abbr] || abbr;
+}
 
 // ---------------------------------------------------------------------------
 // TTL configuration per endpoint (milliseconds) — matches server.js
 // ---------------------------------------------------------------------------
 const CACHE_TTL = {
-  leaguestandingsv3:     12 * 60 * 60 * 1000,  // 12 hours
-  leagueleaders:         12 * 60 * 60 * 1000,  // 12 hours
-  leaguedashplayerstats: 12 * 60 * 60 * 1000,  // 12 hours
-  playergamelog:         12 * 60 * 60 * 1000,  // 12 hours
-  scoreboardv3:           5 * 60 * 1000,        // 5 minutes
-  commonteamroster:       7 * 24 * 60 * 60 * 1000, // 7 days
+  leaguestandingsv3:        12 * 60 * 60 * 1000,  // 12 hours
+  leagueleaders:            12 * 60 * 60 * 1000,  // 12 hours
+  leaguedashplayerstats:    12 * 60 * 60 * 1000,  // 12 hours
+  playergamelog:            12 * 60 * 60 * 1000,  // 12 hours
+  scoreboardv3:              5 * 60 * 1000,        // 5 minutes
+  commonteamroster:          7 * 24 * 60 * 60 * 1000, // 7 days
+  boxscoretraditionalv3:    60 * 1000,             // 60 seconds (live games)
 };
 const DEFAULT_TTL = 5 * 60 * 1000;
 
@@ -128,153 +154,30 @@ function parseResultSet(data, index = 0) {
 }
 
 // ============================================================================
-// STANDINGS
+// STANDINGS  — served from SQLite via /api/db/standings
 // ============================================================================
 export async function fetchStandings() {
-  const data = await fetchNba("leaguestandingsv3", {
-    LeagueID: "00",
-    Season: SEASON,
-    SeasonType: "Regular Season",
-  });
-
-  const rows = parseResultSet(data, 0);
-
-  const standings = { East: [], West: [] };
-
-  rows.forEach((r) => {
-    const conf = r.Conference === "East" ? "East" : "West";
-    const wins = r.WINS;
-    const losses = r.LOSSES;
-    const gp = wins + losses;
-
-    standings[conf].push({
-      team: r.TeamAbbreviation || r.TeamCity?.substring(0, 3).toUpperCase(),
-      teamId: r.TeamID,
-      wins,
-      losses,
-      pct: (wins / gp).toFixed(3),
-      gb: r.ConferenceGamesBack || "-",
-      home: r.HOME || `${r.HomeWins || 0}-${r.HomeLosses || 0}`,
-      away: r.ROAD || `${r.RoadWins || 0}-${r.RoadLosses || 0}`,
-      streak: r.strCurrentStreak || r.CurrentStreak || "—",
-      last10: r.L10 || `${r.Last10Wins || 0}-${r.Last10Losses || 0}`,
-      ppg: r.PointsPG ? +r.PointsPG.toFixed(1) : +(r.PointsFor / gp).toFixed(1),
-      oppPpg: r.OppPointsPG ? +r.OppPointsPG.toFixed(1) : +(r.PointsAgainst / gp).toFixed(1),
-      diff: r.DiffPointsPG
-        ? (r.DiffPointsPG >= 0 ? "+" : "") + r.DiffPointsPG.toFixed(1)
-        : ((r.PointsFor - r.PointsAgainst) / gp >= 0 ? "+" : "") + ((r.PointsFor - r.PointsAgainst) / gp).toFixed(1),
-      division: r.Division || "",
-    });
-  });
-
-  // Sort by win pct within each conference
-  standings.East.sort((a, b) => b.wins / (b.wins + b.losses) - a.wins / (a.wins + a.losses));
-  standings.West.sort((a, b) => b.wins / (b.wins + b.losses) - a.wins / (a.wins + a.losses));
-
-  return standings;
+  const res = await fetch("/api/db/standings");
+  if (!res.ok) throw new Error(`DB standings ${res.status}`);
+  return res.json();
 }
 
 // ============================================================================
-// LEAGUE LEADERS
+// LEAGUE LEADERS  — served from SQLite via /api/db/leaders
 // ============================================================================
 export async function fetchLeagueLeaders() {
-  const categories = [
-    { stat: "PTS", label: "points" },
-    { stat: "REB", label: "rebounds" },
-    { stat: "AST", label: "assists" },
-    { stat: "STL", label: "steals" },
-    { stat: "BLK", label: "blocks" },
-    { stat: "FG3M", label: "threePointers" },
-  ];
-
-  const leaders = {};
-
-  for (const cat of categories) {
-    try {
-      const data = await fetchNba("leagueleaders", {
-        LeagueID: "00",
-        PerMode: "PerGame",
-        Scope: "S",
-        Season: SEASON,
-        SeasonType: "Regular Season",
-        StatCategory: cat.stat,
-      });
-      const rows = parseResultSet(data, 0);
-      leaders[cat.label] = rows.slice(0, 5).map((r) => ({
-        name: r.PLAYER,
-        team: r.TEAM_ABBREVIATION || r.TEAM,
-        value: r[cat.stat]?.toFixed?.(1) || String(r[cat.stat]),
-      }));
-    } catch (e) {
-      console.warn(`Failed to fetch leaders for ${cat.stat}:`, e.message);
-      leaders[cat.label] = [];
-    }
-  }
-
-  return leaders;
+  const res = await fetch("/api/db/leaders");
+  if (!res.ok) throw new Error(`DB leaders ${res.status}`);
+  return res.json(); // { points: [...], rebounds: [...], ... }
 }
 
 // ============================================================================
-// PLAYER STATS (for browse page + detail)
+// PLAYER STATS  — served from SQLite via /api/db/players
 // ============================================================================
 export async function fetchPlayerStats() {
-  const data = await fetchNba("leaguedashplayerstats", {
-    Conference: "",
-    DateFrom: "",
-    DateTo: "",
-    Division: "",
-    GameScope: "",
-    GameSegment: "",
-    Height: "",
-    LastNGames: 0,
-    LeagueID: "00",
-    Location: "",
-    MeasureType: "Base",
-    Month: 0,
-    OpponentTeamID: 0,
-    Outcome: "",
-    PORound: 0,
-    PaceAdjust: "N",
-    PerMode: "PerGame",
-    Period: 0,
-    PlayerExperience: "",
-    PlayerPosition: "",
-    PlusMinus: "N",
-    Rank: "N",
-    Season: SEASON,
-    SeasonSegment: "",
-    SeasonType: "Regular Season",
-    ShotClockRange: "",
-    StarterBench: "",
-    TeamID: 0,
-    TwoWay: 0,
-    VsConference: "",
-    VsDivision: "",
-    Weight: "",
-  });
-
-  const rows = parseResultSet(data, 0);
-
-  // Return top 50 by PPG for the browse page
-  return rows
-    .sort((a, b) => b.PTS - a.PTS)
-    .slice(0, 50)
-    .map((r) => ({
-      playerId: r.PLAYER_ID,
-      name: r.PLAYER_NAME,
-      team: r.TEAM_ABBREVIATION,
-      gp: r.GP,
-      mpg: r.MIN?.toFixed(1),
-      ppg: r.PTS?.toFixed(1),
-      rpg: r.REB?.toFixed(1),
-      apg: r.AST?.toFixed(1),
-      spg: r.STL?.toFixed(1),
-      bpg: r.BLK?.toFixed(1),
-      fgPct: (r.FG_PCT * 100)?.toFixed(1),
-      tpPct: (r.FG3_PCT * 100)?.toFixed(1),
-      ftPct: (r.FT_PCT * 100)?.toFixed(1),
-      topg: r.TOV?.toFixed(1),
-    }));
+  const res = await fetch("/api/db/players");
+  if (!res.ok) throw new Error(`DB players ${res.status}`);
+  return res.json();
 }
 
 // ============================================================================
@@ -289,7 +192,7 @@ export async function fetchPlayerGameLog(playerId) {
 
   const rows = parseResultSet(data, 0);
 
-  return rows.slice(0, 20).map((r) => {
+  return rows.map((r) => {
     const matchup = r.MATCHUP || "";
     const oppMatch = matchup.match(/(?:vs\.|@)\s*(\w+)/);
     const opp = oppMatch ? oppMatch[1] : "???";
@@ -317,13 +220,28 @@ export async function fetchPlayerGameLog(playerId) {
   });
 }
 
+// Converts NBA ISO duration clock "PT04M17.00S" → "4:17"
+function parseGameClock(clock) {
+  if (!clock) return "";
+  const match = clock.match(/PT(\d+)M([\d.]+)S/);
+  if (!match) return clock;
+  const mins = parseInt(match[1], 10);
+  const secs = Math.floor(parseFloat(match[2]));
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 // ============================================================================
 // SCOREBOARD (today's games)
 // ============================================================================
 export async function fetchScoreboard() {
+  // Use local calendar date — toISOString() returns UTC which rolls over to
+  // "tomorrow" for US timezones during evening hours.
+  const now = new Date();
+  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
   const data = await fetchNba("scoreboardv3", {
     LeagueID: "00",
-    GameDate: new Date().toISOString().split("T")[0],
+    GameDate: localDate,
   });
 
   // scoreboardv3 has a different response shape
@@ -333,18 +251,170 @@ export async function fetchScoreboard() {
     id: g.gameId,
     homeTeam: g.homeTeam?.teamTricode,
     awayTeam: g.awayTeam?.teamTricode,
-    homeScore: g.homeTeam?.score || 0,
-    awayScore: g.awayTeam?.score || 0,
-    status: g.gameStatusText?.includes("Final")
+    homeScore: g.homeTeam?.score ?? 0,
+    awayScore: g.awayTeam?.score ?? 0,
+    // gameStatus: 1=pre, 2=live, 3=final (more reliable than period check)
+    status: g.gameStatus === 3 || g.gameStatusText?.toLowerCase().includes("final")
       ? "FINAL"
-      : g.period > 0
+      : g.gameStatus === 2
       ? "LIVE"
       : "UPCOMING",
     quarter: g.period || 0,
-    timeRemaining: g.gameClock || "",
+    timeRemaining: parseGameClock(g.gameClock || ""),
     scheduledTime: g.gameStatusText || "",
     broadcast: g.broadcasters?.nationalBroadcasters?.[0]?.broadcasterDisplay || "",
+    // Per-period scores for the cumulative score line chart
+    homePeriods: (g.homeTeam?.periods || []).map((p) => p.score ?? 0),
+    awayPeriods: (g.awayTeam?.periods || []).map((p) => p.score ?? 0),
   }));
+}
+
+// ============================================================================
+// BOX SCORE (live / final games)
+// ============================================================================
+export async function fetchBoxScore(gameId) {
+  const data = await fetchNba("boxscoretraditionalv3", {
+    GameID: gameId,
+    LeagueID: "00",
+    Season: SEASON,
+    SeasonType: "Regular Season",
+    RangeType: 0,
+    StartPeriod: 0,
+    EndPeriod: 0,
+    StartRange: 0,
+    EndRange: 0,
+  });
+
+  const game = data.boxScoreTraditional;
+  if (!game) return null;
+
+  // Parse "PT36M22.00S" → "36:22"
+  function parseMins(m) {
+    const match = (m || "").match(/PT(\d+)M([\d.]+)S/);
+    if (!match) return "0:00";
+    return `${match[1]}:${String(Math.floor(parseFloat(match[2]))).padStart(2, "0")}`;
+  }
+
+  function transformPlayers(teamData) {
+    return (teamData.players || [])
+      .filter((p) => p.played !== "0" && p.played !== 0 && p.played !== false)
+      .map((p) => {
+        const s = p.statistics || {};
+        const pm = s.plusMinusPoints ?? 0;
+        return {
+          name: p.name || `${p.firstName} ${p.familyName}`,
+          pos: p.position || "",
+          min: parseMins(s.minutes),
+          pts: s.points ?? 0,
+          reb: s.reboundsTotal ?? 0,
+          ast: s.assists ?? 0,
+          stl: s.steals ?? 0,
+          blk: s.blocks ?? 0,
+          fgm: s.fieldGoalsMade ?? 0,
+          fga: s.fieldGoalsAttempted ?? 0,
+          tpm: s.threePointersMade ?? 0,
+          tpa: s.threePointersAttempted ?? 0,
+          ftm: s.freeThrowsMade ?? 0,
+          fta: s.freeThrowsAttempted ?? 0,
+          to: s.turnovers ?? 0,
+          pf: s.foulsPersonal ?? 0,
+          plusMinus: pm >= 0 ? `+${Math.round(pm)}` : String(Math.round(pm)),
+          starter: p.starter === "1" || p.starter === 1,
+        };
+      })
+      .sort((a, b) => (b.starter ? 1 : 0) - (a.starter ? 1 : 0)); // starters first
+  }
+
+  function teamStats(teamData) {
+    const s = teamData.statistics || {};
+    const made = s.fieldGoalsMade ?? 0;
+    const att = s.fieldGoalsAttempted ?? 1;
+    const tMade = s.threePointersMade ?? 0;
+    const tAtt = s.threePointersAttempted ?? 1;
+    const ftMade = s.freeThrowsMade ?? 0;
+    const ftAtt = s.freeThrowsAttempted ?? 1;
+    const benchPts = (teamData.players || [])
+      .filter((p) => p.starter !== "1" && p.starter !== 1)
+      .reduce((sum, p) => sum + (p.statistics?.points ?? 0), 0);
+    return {
+      fgPct: +((made / att) * 100).toFixed(1),
+      threePct: +((tMade / tAtt) * 100).toFixed(1),
+      ftPct: +((ftMade / ftAtt) * 100).toFixed(1),
+      rebounds: s.reboundsTotal ?? 0,
+      assists: s.assists ?? 0,
+      turnovers: s.turnovers ?? 0,
+      steals: s.steals ?? 0,
+      blocks: s.blocks ?? 0,
+      pointsInPaint: s.pointsInThePaint ?? 0,
+      fastBreakPts: s.pointsFastBreak ?? 0,
+      benchPts,
+    };
+  }
+
+  // Team ID → tricode fallback for when teamTricode is null (live game stub data)
+  const TEAM_ID_ABBR = {
+    1610612737: "ATL", 1610612738: "BOS", 1610612739: "CLE",
+    1610612740: "NOP", 1610612741: "CHI", 1610612742: "DAL",
+    1610612743: "DEN", 1610612744: "GSW", 1610612745: "HOU",
+    1610612746: "LAC", 1610612747: "LAL", 1610612748: "MIA",
+    1610612749: "MIL", 1610612750: "MIN", 1610612751: "BKN",
+    1610612752: "NYK", 1610612753: "ORL", 1610612754: "IND",
+    1610612755: "PHI", 1610612756: "PHX", 1610612757: "POR",
+    1610612758: "SAC", 1610612759: "SAS", 1610612760: "OKC",
+    1610612761: "TOR", 1610612762: "UTA", 1610612763: "MEM",
+    1610612764: "WAS", 1610612765: "DET", 1610612766: "CHA",
+  };
+
+  const home = game.homeTeam;
+  const away = game.awayTeam;
+
+  // Return null when the API returns stub data (live games on some backends
+  // return players: [] for both teams). This keeps hasDetail false so the UI
+  // doesn't show an empty "Box Score" heading.
+  if (!home.players?.length && !away.players?.length) return null;
+
+  // Use tricode from team object; fall back to top-level team IDs if null (live game)
+  const homeTricode = home.teamTricode || TEAM_ID_ABBR[game.homeTeamId] || "HOME";
+  const awayTricode = away.teamTricode || TEAM_ID_ABBR[game.awayTeamId] || "AWAY";
+
+  const homePlayers = transformPlayers(home);
+  const awayPlayers = transformPlayers(away);
+
+  // If both transformed player lists are empty, treat as no data
+  if (!homePlayers.length && !awayPlayers.length) return null;
+
+  return {
+    homeTricode,
+    awayTricode,
+    teamStats: {
+      [homeTricode]: teamStats(home),
+      [awayTricode]: teamStats(away),
+    },
+    boxScore: {
+      [homeTricode]: homePlayers,
+      [awayTricode]: awayPlayers,
+    },
+  };
+}
+
+// ============================================================================
+// CACHE UTILITIES
+// ============================================================================
+
+// Clears cache for a specific endpoint (e.g. "scoreboardv3") so the next
+// fetchScoreboard() call goes to the network instead of returning stale data.
+export function clearEndpointCache(endpoint) {
+  for (const key of memCache.keys()) {
+    if (key.startsWith(endpoint + "__")) memCache.delete(key);
+  }
+  try {
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(LS_PREFIX + endpoint + "__")) toRemove.push(key);
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {}
 }
 
 // ============================================================================
@@ -370,6 +440,15 @@ export async function fetchTeamRoster(teamId) {
 // ============================================================================
 // CACHE MANAGEMENT
 // ============================================================================
+// ============================================================================
+// LINEUPS  — served from SQLite via /api/db/lineups
+// ============================================================================
+export async function fetchLineups(team, groupSize) {
+  const res = await fetch(`/api/db/lineups?team=${team}&groupSize=${groupSize}`);
+  if (!res.ok) throw new Error(`DB lineups ${res.status}`);
+  return res.json();
+}
+
 export function clearCache() {
   memCache.clear();
   const toRemove = [];
