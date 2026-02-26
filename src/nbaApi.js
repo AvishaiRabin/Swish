@@ -40,9 +40,23 @@ const CACHE_TTL = {
   leagueleaders:            12 * 60 * 60 * 1000,  // 12 hours
   leaguedashplayerstats:    12 * 60 * 60 * 1000,  // 12 hours
   playergamelog:            12 * 60 * 60 * 1000,  // 12 hours
+  teamgamelog:               4 * 60 * 60 * 1000,  // 4 hours
   scoreboardv3:              5 * 60 * 1000,        // 5 minutes
   commonteamroster:          7 * 24 * 60 * 60 * 1000, // 7 days
+  boxscoretraditionalv2:    60 * 1000,             // 60 seconds (live games)
   boxscoretraditionalv3:    60 * 1000,             // 60 seconds (live games)
+};
+
+// ---------------------------------------------------------------------------
+// NBA team ID lookup — required for team-specific endpoints
+// ---------------------------------------------------------------------------
+const TEAM_IDS = {
+  ATL: 1610612737, BOS: 1610612738, BKN: 1610612751, CHA: 1610612766, CHI: 1610612741,
+  CLE: 1610612739, DAL: 1610612742, DEN: 1610612743, DET: 1610612765, GSW: 1610612744,
+  HOU: 1610612745, IND: 1610612754, LAC: 1610612746, LAL: 1610612747, MEM: 1610612763,
+  MIA: 1610612748, MIL: 1610612749, MIN: 1610612750, NOP: 1610612740, NYK: 1610612752,
+  OKC: 1610612760, ORL: 1610612753, PHI: 1610612755, PHX: 1610612756, POR: 1610612757,
+  SAC: 1610612758, SAS: 1610612759, TOR: 1610612761, UTA: 1610612762, WAS: 1610612764,
 };
 const DEFAULT_TTL = 5 * 60 * 1000;
 
@@ -220,6 +234,39 @@ export async function fetchPlayerGameLog(playerId) {
   });
 }
 
+// ============================================================================
+// TEAM GAME LOG — last N completed games for a team
+// ============================================================================
+export async function fetchTeamGameLog(teamAbbr, count = 10) {
+  const teamId = TEAM_IDS[teamAbbr];
+  if (!teamId) return null;
+
+  const data = await fetchNba("teamgamelog", {
+    TeamID: teamId,
+    Season: SEASON,
+    SeasonType: "Regular Season",
+  });
+
+  const rows = parseResultSet(data, 0);
+
+  return rows.slice(0, count).map((r) => {
+    const matchup = r.MATCHUP || "";
+    const oppMatch = matchup.match(/(?:vs\.|@)\s*(\w+)/);
+    const opp = oppMatch ? normalizeAbbr(oppMatch[1]) : "???";
+    const pts = r.PTS ?? 0;
+    const oppPts = pts - (r.PLUS_MINUS ?? 0);
+    return {
+      date: r.GAME_DATE
+        ? new Date(r.GAME_DATE).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+        : "",
+      opp,
+      home: matchup.includes("vs."),
+      result: (r.WL || "").startsWith("W") ? "W" : "L",
+      score: `${pts}-${oppPts}`,
+    };
+  });
+}
+
 // Converts NBA ISO duration clock "PT04M17.00S" → "4:17"
 function parseGameClock(clock) {
   if (!clock) return "";
@@ -233,11 +280,11 @@ function parseGameClock(clock) {
 // ============================================================================
 // SCOREBOARD (today's games)
 // ============================================================================
-export async function fetchScoreboard() {
+export async function fetchScoreboard(date = null) {
   // Use local calendar date — toISOString() returns UTC which rolls over to
   // "tomorrow" for US timezones during evening hours.
   const now = new Date();
-  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const localDate = date || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   const data = await fetchNba("scoreboardv3", {
     LeagueID: "00",
@@ -272,128 +319,103 @@ export async function fetchScoreboard() {
 // ============================================================================
 // BOX SCORE (live / final games)
 // ============================================================================
-export async function fetchBoxScore(gameId) {
-  const data = await fetchNba("boxscoretraditionalv3", {
+// homeTeamAbbr / awayTeamAbbr are passed from the scoreboard so we can
+// correctly label which resultSet rows belong to home vs away.
+export async function fetchBoxScore(gameId, homeTeamAbbr, awayTeamAbbr) {
+  const data = await fetchNba("boxscoretraditionalv2", {
     GameID: gameId,
-    LeagueID: "00",
+    RangeType: 0,
     Season: SEASON,
     SeasonType: "Regular Season",
-    RangeType: 0,
-    StartPeriod: 0,
-    EndPeriod: 0,
+    StartPeriod: 1,
+    EndPeriod: 10,
     StartRange: 0,
     EndRange: 0,
   });
 
-  const game = data.boxScoreTraditional;
-  if (!game) return null;
+  // v2 uses resultSets format: [PlayerStats, TeamStats, ...]
+  const playerRows = parseResultSet(data, 0); // PlayerStats
+  const teamRows   = parseResultSet(data, 1); // TeamStats
 
-  // Parse "PT36M22.00S" → "36:22"
+  // Only include players who actually played (MIN is non-null/non-empty)
+  const activePlayers = playerRows.filter((p) => p.MIN != null && p.MIN !== "");
+  if (!activePlayers.length) return null;
+
+  // MIN in v2 is "MM:SS" or "MM:SS.S" — strip decimals
   function parseMins(m) {
-    const match = (m || "").match(/PT(\d+)M([\d.]+)S/);
-    if (!match) return "0:00";
-    return `${match[1]}:${String(Math.floor(parseFloat(match[2]))).padStart(2, "0")}`;
+    if (!m) return "0:00";
+    return String(m).split(".")[0];
   }
 
-  function transformPlayers(teamData) {
-    return (teamData.players || [])
-      .filter((p) => p.played !== "0" && p.played !== 0 && p.played !== false)
-      .map((p) => {
-        const s = p.statistics || {};
-        const pm = s.plusMinusPoints ?? 0;
-        return {
-          name: p.name || `${p.firstName} ${p.familyName}`,
-          pos: p.position || "",
-          min: parseMins(s.minutes),
-          pts: s.points ?? 0,
-          reb: s.reboundsTotal ?? 0,
-          ast: s.assists ?? 0,
-          stl: s.steals ?? 0,
-          blk: s.blocks ?? 0,
-          fgm: s.fieldGoalsMade ?? 0,
-          fga: s.fieldGoalsAttempted ?? 0,
-          tpm: s.threePointersMade ?? 0,
-          tpa: s.threePointersAttempted ?? 0,
-          ftm: s.freeThrowsMade ?? 0,
-          fta: s.freeThrowsAttempted ?? 0,
-          to: s.turnovers ?? 0,
-          pf: s.foulsPersonal ?? 0,
-          plusMinus: pm >= 0 ? `+${Math.round(pm)}` : String(Math.round(pm)),
-          starter: p.starter === "1" || p.starter === 1,
-        };
-      })
-      .sort((a, b) => (b.starter ? 1 : 0) - (a.starter ? 1 : 0)); // starters first
+  // Group players by team abbreviation
+  const byTeam = {};
+  activePlayers.forEach((p) => {
+    const abbr = normalizeAbbr(p.TEAM_ABBREVIATION);
+    if (!byTeam[abbr]) byTeam[abbr] = [];
+    const pm = p.PLUS_MINUS ?? 0;
+    byTeam[abbr].push({
+      name: p.PLAYER_NAME || "",
+      pos: p.START_POSITION || "",
+      min: parseMins(p.MIN),
+      pts: p.PTS ?? 0,
+      reb: p.REB ?? 0,
+      ast: p.AST ?? 0,
+      stl: p.STL ?? 0,
+      blk: p.BLK ?? 0,
+      fgm: p.FGM ?? 0,
+      fga: p.FGA ?? 0,
+      tpm: p.FG3M ?? 0,
+      tpa: p.FG3A ?? 0,
+      ftm: p.FTM ?? 0,
+      fta: p.FTA ?? 0,
+      to: p.TO ?? 0,
+      pf: p.PF ?? 0,
+      plusMinus: pm >= 0 ? `+${pm}` : String(pm),
+      starter: p.START_POSITION != null && p.START_POSITION !== "",
+    });
+  });
+
+  // Sort each team: starters first
+  for (const abbr of Object.keys(byTeam)) {
+    byTeam[abbr].sort((a, b) => (b.starter ? 1 : 0) - (a.starter ? 1 : 0));
   }
 
-  function teamStats(teamData) {
-    const s = teamData.statistics || {};
-    const made = s.fieldGoalsMade ?? 0;
-    const att = s.fieldGoalsAttempted ?? 1;
-    const tMade = s.threePointersMade ?? 0;
-    const tAtt = s.threePointersAttempted ?? 1;
-    const ftMade = s.freeThrowsMade ?? 0;
-    const ftAtt = s.freeThrowsAttempted ?? 1;
-    const benchPts = (teamData.players || [])
-      .filter((p) => p.starter !== "1" && p.starter !== 1)
-      .reduce((sum, p) => sum + (p.statistics?.points ?? 0), 0);
-    return {
-      fgPct: +((made / att) * 100).toFixed(1),
-      threePct: +((tMade / tAtt) * 100).toFixed(1),
-      ftPct: +((ftMade / ftAtt) * 100).toFixed(1),
-      rebounds: s.reboundsTotal ?? 0,
-      assists: s.assists ?? 0,
-      turnovers: s.turnovers ?? 0,
-      steals: s.steals ?? 0,
-      blocks: s.blocks ?? 0,
-      pointsInPaint: s.pointsInThePaint ?? 0,
-      fastBreakPts: s.pointsFastBreak ?? 0,
+  // Build team stats from TeamStats resultSet
+  const teamStatsByAbbr = {};
+  teamRows.forEach((t) => {
+    const abbr = normalizeAbbr(t.TEAM_ABBREVIATION);
+    const players = byTeam[abbr] || [];
+    const benchPts = players.filter((p) => !p.starter).reduce((s, p) => s + p.pts, 0);
+    teamStatsByAbbr[abbr] = {
+      fgPct:  +((t.FG_PCT  || 0) * 100).toFixed(1),
+      threePct: +((t.FG3_PCT || 0) * 100).toFixed(1),
+      ftPct:  +((t.FT_PCT  || 0) * 100).toFixed(1),
+      rebounds:  t.REB ?? 0,
+      assists:   t.AST ?? 0,
+      turnovers: t.TO  ?? 0,
+      steals:    t.STL ?? 0,
+      blocks:    t.BLK ?? 0,
+      pointsInPaint: 0, // not in v2
+      fastBreakPts:  0, // not in v2
       benchPts,
     };
-  }
+  });
 
-  // Team ID → tricode fallback for when teamTricode is null (live game stub data)
-  const TEAM_ID_ABBR = {
-    1610612737: "ATL", 1610612738: "BOS", 1610612739: "CLE",
-    1610612740: "NOP", 1610612741: "CHI", 1610612742: "DAL",
-    1610612743: "DEN", 1610612744: "GSW", 1610612745: "HOU",
-    1610612746: "LAC", 1610612747: "LAL", 1610612748: "MIA",
-    1610612749: "MIL", 1610612750: "MIN", 1610612751: "BKN",
-    1610612752: "NYK", 1610612753: "ORL", 1610612754: "IND",
-    1610612755: "PHI", 1610612756: "PHX", 1610612757: "POR",
-    1610612758: "SAC", 1610612759: "SAS", 1610612760: "OKC",
-    1610612761: "TOR", 1610612762: "UTA", 1610612763: "MEM",
-    1610612764: "WAS", 1610612765: "DET", 1610612766: "CHA",
-  };
-
-  const home = game.homeTeam;
-  const away = game.awayTeam;
-
-  // Return null when the API returns stub data (live games on some backends
-  // return players: [] for both teams). This keeps hasDetail false so the UI
-  // doesn't show an empty "Box Score" heading.
-  if (!home.players?.length && !away.players?.length) return null;
-
-  // Use tricode from team object; fall back to top-level team IDs if null (live game)
-  const homeTricode = home.teamTricode || TEAM_ID_ABBR[game.homeTeamId] || "HOME";
-  const awayTricode = away.teamTricode || TEAM_ID_ABBR[game.awayTeamId] || "AWAY";
-
-  const homePlayers = transformPlayers(home);
-  const awayPlayers = transformPlayers(away);
-
-  // If both transformed player lists are empty, treat as no data
-  if (!homePlayers.length && !awayPlayers.length) return null;
+  // Use scoreboard-provided home/away tricodes as canonical keys.
+  // Fall back to the order teams appear in the resultSet (away listed first in v2).
+  const teamAbbrs = [...new Set(activePlayers.map((p) => normalizeAbbr(p.TEAM_ABBREVIATION)))];
+  const homeTricode = (homeTeamAbbr && byTeam[normalizeAbbr(homeTeamAbbr)])
+    ? normalizeAbbr(homeTeamAbbr)
+    : (teamAbbrs[1] || "HOME");
+  const awayTricode = (awayTeamAbbr && byTeam[normalizeAbbr(awayTeamAbbr)])
+    ? normalizeAbbr(awayTeamAbbr)
+    : (teamAbbrs[0] || "AWAY");
 
   return {
     homeTricode,
     awayTricode,
-    teamStats: {
-      [homeTricode]: teamStats(home),
-      [awayTricode]: teamStats(away),
-    },
-    boxScore: {
-      [homeTricode]: homePlayers,
-      [awayTricode]: awayPlayers,
-    },
+    teamStats: teamStatsByAbbr,
+    boxScore: byTeam,
   };
 }
 
