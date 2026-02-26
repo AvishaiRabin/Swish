@@ -485,6 +485,8 @@ app.post("/api/db/refresh", async (_req, res) => {
 // ---------------------------------------------------------------------------
 const FILE_CACHE_TTL = {
   scoreboardv3:          5 * 60 * 1000,
+  teamgamelog:           4 * 60 * 60 * 1000,  // 4 hours
+  boxscoretraditionalv2: 60 * 1000,
   boxscoretraditionalv3: 60 * 1000,
   playergamelog:         12 * 60 * 60 * 1000,
   commonteamroster:      7 * 24 * 60 * 60 * 1000,

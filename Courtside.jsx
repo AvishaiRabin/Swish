@@ -4,6 +4,7 @@ import {
   fetchLeagueLeaders,
   fetchPlayerStats,
   fetchPlayerGameLog,
+  fetchTeamGameLog,
   fetchScoreboard,
   fetchBoxScore,
   fetchLineups,
@@ -512,117 +513,488 @@ const PLAYERS = [
   },
 ];
 
-// Detailed team data for 3 teams
+// Detailed team data for all 30 teams (2025-26 season)
 const TEAM_DETAILS = {
+  // ── EASTERN CONFERENCE ─────────────────────────────────────────────────────
   BOS: {
     confRank: 1,
-    roster: [
-      { name: "Jayson Tatum", pos: "SF", jersey: 0, gp: 55, mpg: 36.2, ppg: 27.4, rpg: 8.2, apg: 4.8, spg: 1.1, bpg: 0.6, fgPct: 47.2, tpPct: 37.8, ftPct: 83.6 },
-      { name: "Jaylen Brown", pos: "SG", jersey: 7, gp: 52, mpg: 34.0, ppg: 23.2, rpg: 5.6, apg: 3.4, spg: 1.2, bpg: 0.4, fgPct: 49.4, tpPct: 35.6, ftPct: 71.8 },
-      { name: "Derrick White", pos: "PG", jersey: 9, gp: 54, mpg: 32.5, ppg: 15.8, rpg: 4.2, apg: 5.2, spg: 1.0, bpg: 1.2, fgPct: 46.8, tpPct: 39.4, ftPct: 88.2 },
-      { name: "Kristaps Porzingis", pos: "C", jersey: 8, gp: 38, mpg: 28.4, ppg: 20.4, rpg: 7.4, apg: 1.8, spg: 0.6, bpg: 1.8, fgPct: 52.6, tpPct: 36.8, ftPct: 85.4 },
-      { name: "Jrue Holiday", pos: "PG", jersey: 4, gp: 54, mpg: 33.2, ppg: 13.6, rpg: 5.8, apg: 4.6, spg: 0.8, bpg: 0.8, fgPct: 48.2, tpPct: 42.4, ftPct: 82.0 },
-      { name: "Al Horford", pos: "C", jersey: 42, gp: 50, mpg: 22.8, ppg: 8.4, rpg: 5.4, apg: 2.6, spg: 0.6, bpg: 0.8, fgPct: 48.8, tpPct: 38.2, ftPct: 80.6 },
-      { name: "Payton Pritchard", pos: "PG", jersey: 11, gp: 54, mpg: 18.6, ppg: 10.2, rpg: 2.2, apg: 2.8, spg: 0.4, bpg: 0.1, fgPct: 44.2, tpPct: 40.8, ftPct: 88.6 },
-      { name: "Sam Hauser", pos: "SF", jersey: 30, gp: 48, mpg: 16.4, ppg: 7.6, rpg: 2.8, apg: 0.8, spg: 0.4, bpg: 0.2, fgPct: 46.0, tpPct: 42.6, ftPct: 82.0 },
-    ],
-    teamStats: { ortg: 120.8, drtg: 108.4, pace: 100.2, netRtg: 12.4, efgPct: 57.8, tovPct: 12.4, orbPct: 24.6, ftRate: 26.2 },
+    teamStats: { ortg: 119.2, drtg: 107.8, pace: 99.8, netRtg: 11.4, efgPct: 57.4, tovPct: 12.2, orbPct: 25.0, ftRate: 25.8 },
     homeRecord: "24-4", awayRecord: "18-8",
-    homeSplits: { ppg: 122.4, oppPpg: 108.8, fgPct: 49.2, tpPct: 39.6 },
-    awaySplits: { ppg: 117.6, oppPpg: 112.2, fgPct: 46.4, tpPct: 36.8 },
+    homeSplits: { ppg: 121.8, oppPpg: 107.2, fgPct: 49.0, tpPct: 39.4 },
+    awaySplits: { ppg: 116.4, oppPpg: 111.0, fgPct: 46.2, tpPct: 36.6 },
     ratingHistory: [
-      { game: "G1-5", ortg: 118, drtg: 110 }, { game: "G6-10", ortg: 122, drtg: 106 },
-      { game: "G11-15", ortg: 119, drtg: 109 }, { game: "G16-20", ortg: 124, drtg: 107 },
-      { game: "G21-25", ortg: 121, drtg: 108 }, { game: "G26-30", ortg: 118, drtg: 112 },
-      { game: "G31-35", ortg: 123, drtg: 106 }, { game: "G36-40", ortg: 120, drtg: 109 },
-      { game: "G41-45", ortg: 122, drtg: 108 }, { game: "G46-50", ortg: 119, drtg: 110 },
-      { game: "G51-54", ortg: 121, drtg: 107 },
+      { game: "G1-5", ortg: 116, drtg: 111 }, { game: "G6-10", ortg: 120, drtg: 108 },
+      { game: "G11-15", ortg: 118, drtg: 108 }, { game: "G16-20", ortg: 122, drtg: 106 },
+      { game: "G21-25", ortg: 120, drtg: 108 }, { game: "G26-30", ortg: 117, drtg: 110 },
+      { game: "G31-35", ortg: 121, drtg: 107 }, { game: "G36-40", ortg: 119, drtg: 108 },
+      { game: "G41-45", ortg: 120, drtg: 107 }, { game: "G46-50", ortg: 118, drtg: 108 },
+      { game: "G51-54", ortg: 121, drtg: 106 },
     ],
-    last10: [
-      { date: "2/18", opp: "MIL", result: "W", score: "118-106" }, { date: "2/16", opp: "CLE", result: "W", score: "112-108" },
-      { date: "2/14", opp: "NYK", result: "L", score: "104-110" }, { date: "2/12", opp: "MIA", result: "W", score: "122-98" },
-      { date: "2/10", opp: "PHI", result: "W", score: "130-118" }, { date: "2/8", opp: "ORL", result: "W", score: "115-102" },
-      { date: "2/6", opp: "BKN", result: "W", score: "128-104" }, { date: "2/4", opp: "TOR", result: "W", score: "116-100" },
-      { date: "2/2", opp: "IND", result: "W", score: "124-118" }, { date: "1/31", opp: "CHI", result: "L", score: "108-112" },
-    ],
-    next5: [
-      { date: "2/21", opp: "OKC", time: "7:30 PM", home: true }, { date: "2/23", opp: "DEN", time: "3:00 PM", home: true },
-      { date: "2/25", opp: "DAL", time: "8:00 PM", home: false }, { date: "2/27", opp: "PHX", time: "9:00 PM", home: false },
-      { date: "3/1", opp: "LAC", time: "10:00 PM", home: false },
+    roster: [
+      { name: "Jayson Tatum", pos: "SF", jersey: 0, gp: 54, mpg: 36.4, ppg: 27.0, rpg: 8.4, apg: 5.2, spg: 1.1, bpg: 0.6, fgPct: 47.4, tpPct: 38.2, ftPct: 83.8 },
+      { name: "Jaylen Brown", pos: "SG", jersey: 7, gp: 51, mpg: 34.2, ppg: 22.8, rpg: 5.4, apg: 3.6, spg: 1.2, bpg: 0.4, fgPct: 49.6, tpPct: 36.0, ftPct: 72.2 },
+      { name: "Derrick White", pos: "PG", jersey: 9, gp: 53, mpg: 32.8, ppg: 16.2, rpg: 4.4, apg: 5.4, spg: 1.0, bpg: 1.2, fgPct: 47.0, tpPct: 39.8, ftPct: 88.4 },
+      { name: "Jrue Holiday", pos: "PG", jersey: 4, gp: 53, mpg: 33.4, ppg: 14.2, rpg: 5.4, apg: 4.8, spg: 0.8, bpg: 0.8, fgPct: 48.4, tpPct: 42.6, ftPct: 82.4 },
+      { name: "Al Horford", pos: "C", jersey: 42, gp: 50, mpg: 23.2, ppg: 9.2, rpg: 5.8, apg: 2.8, spg: 0.6, bpg: 0.8, fgPct: 49.0, tpPct: 38.8, ftPct: 81.0 },
+      { name: "Payton Pritchard", pos: "PG", jersey: 11, gp: 54, mpg: 19.2, ppg: 11.4, rpg: 2.4, apg: 3.0, spg: 0.4, bpg: 0.1, fgPct: 45.0, tpPct: 41.4, ftPct: 89.0 },
+      { name: "Sam Hauser", pos: "SF", jersey: 30, gp: 47, mpg: 16.8, ppg: 7.8, rpg: 2.8, apg: 0.8, spg: 0.4, bpg: 0.2, fgPct: 46.2, tpPct: 43.0, ftPct: 82.2 },
+      { name: "Xavier Tillman", pos: "PF", jersey: 26, gp: 40, mpg: 14.2, ppg: 4.6, rpg: 4.4, apg: 1.0, spg: 0.6, bpg: 0.6, fgPct: 52.4, tpPct: 30.0, ftPct: 70.0 },
     ],
   },
+  CLE: {
+    confRank: 2,
+    teamStats: { ortg: 116.4, drtg: 108.2, pace: 98.6, netRtg: 8.2, efgPct: 55.2, tovPct: 12.8, orbPct: 23.4, ftRate: 26.4 },
+    homeRecord: "22-8", awayRecord: "17-8",
+    homeSplits: { ppg: 118.4, oppPpg: 108.6, fgPct: 47.8, tpPct: 37.8 },
+    awaySplits: { ppg: 114.2, oppPpg: 111.4, fgPct: 45.4, tpPct: 35.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 113, drtg: 112 }, { game: "G6-10", ortg: 115, drtg: 110 },
+      { game: "G11-15", ortg: 116, drtg: 109 }, { game: "G16-20", ortg: 118, drtg: 107 },
+      { game: "G21-25", ortg: 116, drtg: 108 }, { game: "G26-30", ortg: 117, drtg: 107 },
+      { game: "G31-35", ortg: 115, drtg: 109 }, { game: "G36-40", ortg: 118, drtg: 106 },
+      { game: "G41-45", ortg: 117, drtg: 108 }, { game: "G46-50", ortg: 116, drtg: 107 },
+      { game: "G51-54", ortg: 118, drtg: 106 },
+    ],
+  },
+  NYK: {
+    confRank: 3,
+    teamStats: { ortg: 115.8, drtg: 109.2, pace: 98.2, netRtg: 6.6, efgPct: 54.8, tovPct: 13.0, orbPct: 24.2, ftRate: 28.6 },
+    homeRecord: "21-7", awayRecord: "15-12",
+    homeSplits: { ppg: 117.6, oppPpg: 109.8, fgPct: 47.4, tpPct: 37.2 },
+    awaySplits: { ppg: 113.8, oppPpg: 112.6, fgPct: 44.8, tpPct: 34.6 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 114, drtg: 111 }, { game: "G6-10", ortg: 115, drtg: 110 },
+      { game: "G11-15", ortg: 116, drtg: 109 }, { game: "G16-20", ortg: 115, drtg: 109 },
+      { game: "G21-25", ortg: 116, drtg: 108 }, { game: "G26-30", ortg: 114, drtg: 110 },
+      { game: "G31-35", ortg: 117, drtg: 108 }, { game: "G36-40", ortg: 115, drtg: 109 },
+      { game: "G41-45", ortg: 117, drtg: 108 }, { game: "G46-50", ortg: 115, drtg: 110 },
+      { game: "G51-54", ortg: 116, drtg: 108 },
+    ],
+  },
+  MIL: {
+    confRank: 4,
+    teamStats: { ortg: 117.6, drtg: 111.2, pace: 101.2, netRtg: 6.4, efgPct: 55.6, tovPct: 13.4, orbPct: 25.8, ftRate: 29.2 },
+    homeRecord: "20-8", awayRecord: "14-12",
+    homeSplits: { ppg: 119.8, oppPpg: 111.4, fgPct: 48.2, tpPct: 37.0 },
+    awaySplits: { ppg: 115.2, oppPpg: 114.6, fgPct: 45.6, tpPct: 34.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 116, drtg: 113 }, { game: "G6-10", ortg: 118, drtg: 112 },
+      { game: "G11-15", ortg: 117, drtg: 112 }, { game: "G16-20", ortg: 119, drtg: 110 },
+      { game: "G21-25", ortg: 117, drtg: 111 }, { game: "G26-30", ortg: 118, drtg: 110 },
+      { game: "G31-35", ortg: 116, drtg: 112 }, { game: "G36-40", ortg: 119, drtg: 109 },
+      { game: "G41-45", ortg: 117, drtg: 112 }, { game: "G46-50", ortg: 118, drtg: 111 },
+      { game: "G51-54", ortg: 119, drtg: 110 },
+    ],
+  },
+  ORL: {
+    confRank: 5,
+    teamStats: { ortg: 113.4, drtg: 108.6, pace: 97.4, netRtg: 4.8, efgPct: 53.2, tovPct: 12.6, orbPct: 24.0, ftRate: 24.8 },
+    homeRecord: "20-9", awayRecord: "13-13",
+    homeSplits: { ppg: 115.2, oppPpg: 107.4, fgPct: 46.6, tpPct: 36.4 },
+    awaySplits: { ppg: 111.4, oppPpg: 112.0, fgPct: 43.8, tpPct: 34.0 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 111, drtg: 110 }, { game: "G6-10", ortg: 113, drtg: 109 },
+      { game: "G11-15", ortg: 112, drtg: 108 }, { game: "G16-20", ortg: 114, drtg: 108 },
+      { game: "G21-25", ortg: 113, drtg: 108 }, { game: "G26-30", ortg: 114, drtg: 107 },
+      { game: "G31-35", ortg: 112, drtg: 109 }, { game: "G36-40", ortg: 114, drtg: 108 },
+      { game: "G41-45", ortg: 113, drtg: 108 }, { game: "G46-50", ortg: 114, drtg: 108 },
+      { game: "G51-54", ortg: 115, drtg: 107 },
+    ],
+  },
+  IND: {
+    confRank: 6,
+    teamStats: { ortg: 117.2, drtg: 112.8, pace: 103.6, netRtg: 4.4, efgPct: 56.2, tovPct: 14.2, orbPct: 22.6, ftRate: 25.4 },
+    homeRecord: "19-9", awayRecord: "13-14",
+    homeSplits: { ppg: 120.4, oppPpg: 112.6, fgPct: 48.4, tpPct: 38.2 },
+    awaySplits: { ppg: 116.8, oppPpg: 116.4, fgPct: 45.8, tpPct: 35.6 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 116, drtg: 114 }, { game: "G6-10", ortg: 118, drtg: 113 },
+      { game: "G11-15", ortg: 116, drtg: 113 }, { game: "G16-20", ortg: 119, drtg: 112 },
+      { game: "G21-25", ortg: 117, drtg: 112 }, { game: "G26-30", ortg: 116, drtg: 114 },
+      { game: "G31-35", ortg: 118, drtg: 112 }, { game: "G36-40", ortg: 116, drtg: 113 },
+      { game: "G41-45", ortg: 118, drtg: 111 }, { game: "G46-50", ortg: 117, drtg: 113 },
+      { game: "G51-54", ortg: 119, drtg: 111 },
+    ],
+  },
+  MIA: {
+    confRank: 7,
+    teamStats: { ortg: 114.6, drtg: 110.8, pace: 99.6, netRtg: 3.8, efgPct: 54.0, tovPct: 13.2, orbPct: 23.2, ftRate: 26.0 },
+    homeRecord: "17-11", awayRecord: "13-13",
+    homeSplits: { ppg: 116.4, oppPpg: 110.2, fgPct: 46.8, tpPct: 36.8 },
+    awaySplits: { ppg: 112.6, oppPpg: 113.2, fgPct: 44.2, tpPct: 34.6 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 113, drtg: 112 }, { game: "G6-10", ortg: 115, drtg: 111 },
+      { game: "G11-15", ortg: 113, drtg: 111 }, { game: "G16-20", ortg: 116, drtg: 110 },
+      { game: "G21-25", ortg: 114, drtg: 110 }, { game: "G26-30", ortg: 113, drtg: 112 },
+      { game: "G31-35", ortg: 115, drtg: 109 }, { game: "G36-40", ortg: 113, drtg: 111 },
+      { game: "G41-45", ortg: 115, drtg: 110 }, { game: "G46-50", ortg: 114, drtg: 111 },
+      { game: "G51-54", ortg: 116, drtg: 110 },
+    ],
+  },
+  PHI: {
+    confRank: 8,
+    teamStats: { ortg: 115.2, drtg: 111.6, pace: 100.8, netRtg: 3.6, efgPct: 54.6, tovPct: 13.8, orbPct: 23.8, ftRate: 27.4 },
+    homeRecord: "17-11", awayRecord: "12-14",
+    homeSplits: { ppg: 117.2, oppPpg: 111.4, fgPct: 47.2, tpPct: 37.0 },
+    awaySplits: { ppg: 113.2, oppPpg: 114.2, fgPct: 44.6, tpPct: 34.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 113, drtg: 113 }, { game: "G6-10", ortg: 115, drtg: 112 },
+      { game: "G11-15", ortg: 114, drtg: 112 }, { game: "G16-20", ortg: 116, drtg: 111 },
+      { game: "G21-25", ortg: 115, drtg: 112 }, { game: "G26-30", ortg: 114, drtg: 112 },
+      { game: "G31-35", ortg: 116, drtg: 110 }, { game: "G36-40", ortg: 114, drtg: 112 },
+      { game: "G41-45", ortg: 116, drtg: 111 }, { game: "G46-50", ortg: 115, drtg: 112 },
+      { game: "G51-54", ortg: 116, drtg: 111 },
+    ],
+  },
+  CHI: {
+    confRank: 9,
+    teamStats: { ortg: 113.8, drtg: 114.2, pace: 100.2, netRtg: -0.4, efgPct: 53.4, tovPct: 13.6, orbPct: 22.8, ftRate: 25.8 },
+    homeRecord: "16-12", awayRecord: "11-16",
+    homeSplits: { ppg: 115.2, oppPpg: 114.0, fgPct: 46.4, tpPct: 35.8 },
+    awaySplits: { ppg: 111.8, oppPpg: 116.4, fgPct: 43.8, tpPct: 33.6 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 113, drtg: 115 }, { game: "G6-10", ortg: 114, drtg: 114 },
+      { game: "G11-15", ortg: 113, drtg: 114 }, { game: "G16-20", ortg: 115, drtg: 113 },
+      { game: "G21-25", ortg: 114, drtg: 114 }, { game: "G26-30", ortg: 112, drtg: 115 },
+      { game: "G31-35", ortg: 115, drtg: 113 }, { game: "G36-40", ortg: 113, drtg: 114 },
+      { game: "G41-45", ortg: 114, drtg: 114 }, { game: "G46-50", ortg: 113, drtg: 115 },
+      { game: "G51-54", ortg: 115, drtg: 113 },
+    ],
+  },
+  ATL: {
+    confRank: 10,
+    teamStats: { ortg: 115.4, drtg: 116.8, pace: 102.8, netRtg: -1.4, efgPct: 54.8, tovPct: 14.4, orbPct: 23.6, ftRate: 27.2 },
+    homeRecord: "15-13", awayRecord: "11-16",
+    homeSplits: { ppg: 117.8, oppPpg: 116.4, fgPct: 47.2, tpPct: 36.4 },
+    awaySplits: { ppg: 114.2, oppPpg: 119.2, fgPct: 44.6, tpPct: 34.0 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 115, drtg: 118 }, { game: "G6-10", ortg: 116, drtg: 117 },
+      { game: "G11-15", ortg: 115, drtg: 117 }, { game: "G16-20", ortg: 117, drtg: 116 },
+      { game: "G21-25", ortg: 115, drtg: 117 }, { game: "G26-30", ortg: 116, drtg: 116 },
+      { game: "G31-35", ortg: 114, drtg: 118 }, { game: "G36-40", ortg: 116, drtg: 116 },
+      { game: "G41-45", ortg: 115, drtg: 117 }, { game: "G46-50", ortg: 116, drtg: 117 },
+      { game: "G51-54", ortg: 117, drtg: 115 },
+    ],
+  },
+  BKN: {
+    confRank: 11,
+    teamStats: { ortg: 112.6, drtg: 116.0, pace: 99.8, netRtg: -3.4, efgPct: 52.8, tovPct: 14.0, orbPct: 23.0, ftRate: 24.6 },
+    homeRecord: "14-14", awayRecord: "9-17",
+    homeSplits: { ppg: 113.8, oppPpg: 115.4, fgPct: 45.8, tpPct: 35.2 },
+    awaySplits: { ppg: 110.2, oppPpg: 118.6, fgPct: 43.4, tpPct: 32.8 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 112, drtg: 117 }, { game: "G6-10", ortg: 113, drtg: 116 },
+      { game: "G11-15", ortg: 112, drtg: 116 }, { game: "G16-20", ortg: 113, drtg: 115 },
+      { game: "G21-25", ortg: 112, drtg: 116 }, { game: "G26-30", ortg: 111, drtg: 117 },
+      { game: "G31-35", ortg: 113, drtg: 115 }, { game: "G36-40", ortg: 112, drtg: 116 },
+      { game: "G41-45", ortg: 113, drtg: 116 }, { game: "G46-50", ortg: 112, drtg: 117 },
+      { game: "G51-54", ortg: 113, drtg: 115 },
+    ],
+  },
+  TOR: {
+    confRank: 12,
+    teamStats: { ortg: 111.8, drtg: 116.4, pace: 100.4, netRtg: -4.6, efgPct: 52.2, tovPct: 14.6, orbPct: 23.4, ftRate: 25.2 },
+    homeRecord: "13-15", awayRecord: "9-18",
+    homeSplits: { ppg: 113.0, oppPpg: 115.6, fgPct: 45.4, tpPct: 34.8 },
+    awaySplits: { ppg: 109.8, oppPpg: 118.4, fgPct: 43.0, tpPct: 32.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 111, drtg: 117 }, { game: "G6-10", ortg: 112, drtg: 117 },
+      { game: "G11-15", ortg: 111, drtg: 116 }, { game: "G16-20", ortg: 113, drtg: 116 },
+      { game: "G21-25", ortg: 111, drtg: 116 }, { game: "G26-30", ortg: 110, drtg: 117 },
+      { game: "G31-35", ortg: 112, drtg: 116 }, { game: "G36-40", ortg: 111, drtg: 117 },
+      { game: "G41-45", ortg: 112, drtg: 116 }, { game: "G46-50", ortg: 111, drtg: 117 },
+      { game: "G51-54", ortg: 113, drtg: 115 },
+    ],
+  },
+  DET: {
+    confRank: 13,
+    teamStats: { ortg: 110.4, drtg: 118.2, pace: 101.6, netRtg: -7.8, efgPct: 51.4, tovPct: 15.0, orbPct: 22.6, ftRate: 26.8 },
+    homeRecord: "11-16", awayRecord: "7-20",
+    homeSplits: { ppg: 111.8, oppPpg: 117.4, fgPct: 44.6, tpPct: 34.2 },
+    awaySplits: { ppg: 108.2, oppPpg: 120.8, fgPct: 42.2, tpPct: 31.8 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 110, drtg: 120 }, { game: "G6-10", ortg: 111, drtg: 119 },
+      { game: "G11-15", ortg: 110, drtg: 118 }, { game: "G16-20", ortg: 112, drtg: 117 },
+      { game: "G21-25", ortg: 110, drtg: 118 }, { game: "G26-30", ortg: 109, drtg: 120 },
+      { game: "G31-35", ortg: 111, drtg: 118 }, { game: "G36-40", ortg: 110, drtg: 119 },
+      { game: "G41-45", ortg: 111, drtg: 118 }, { game: "G46-50", ortg: 110, drtg: 119 },
+      { game: "G51-54", ortg: 111, drtg: 117 },
+    ],
+  },
+  CHA: {
+    confRank: 14,
+    teamStats: { ortg: 109.8, drtg: 119.4, pace: 101.8, netRtg: -9.6, efgPct: 51.0, tovPct: 15.4, orbPct: 22.2, ftRate: 25.6 },
+    homeRecord: "9-18", awayRecord: "6-21",
+    homeSplits: { ppg: 111.2, oppPpg: 118.6, fgPct: 44.0, tpPct: 33.6 },
+    awaySplits: { ppg: 107.6, oppPpg: 121.4, fgPct: 41.8, tpPct: 31.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 109, drtg: 121 }, { game: "G6-10", ortg: 110, drtg: 120 },
+      { game: "G11-15", ortg: 109, drtg: 119 }, { game: "G16-20", ortg: 111, drtg: 118 },
+      { game: "G21-25", ortg: 109, drtg: 120 }, { game: "G26-30", ortg: 108, drtg: 121 },
+      { game: "G31-35", ortg: 110, drtg: 119 }, { game: "G36-40", ortg: 109, drtg: 120 },
+      { game: "G41-45", ortg: 110, drtg: 119 }, { game: "G46-50", ortg: 109, drtg: 120 },
+      { game: "G51-54", ortg: 111, drtg: 119 },
+    ],
+  },
+  WAS: {
+    confRank: 15,
+    teamStats: { ortg: 107.6, drtg: 120.8, pace: 100.6, netRtg: -13.2, efgPct: 50.2, tovPct: 15.8, orbPct: 21.8, ftRate: 25.0 },
+    homeRecord: "7-21", awayRecord: "5-21",
+    homeSplits: { ppg: 109.2, oppPpg: 120.0, fgPct: 43.2, tpPct: 32.8 },
+    awaySplits: { ppg: 106.4, oppPpg: 122.8, fgPct: 41.0, tpPct: 30.6 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 107, drtg: 122 }, { game: "G6-10", ortg: 108, drtg: 121 },
+      { game: "G11-15", ortg: 107, drtg: 121 }, { game: "G16-20", ortg: 108, drtg: 120 },
+      { game: "G21-25", ortg: 107, drtg: 121 }, { game: "G26-30", ortg: 106, drtg: 122 },
+      { game: "G31-35", ortg: 108, drtg: 121 }, { game: "G36-40", ortg: 107, drtg: 122 },
+      { game: "G41-45", ortg: 108, drtg: 120 }, { game: "G46-50", ortg: 107, drtg: 121 },
+      { game: "G51-54", ortg: 109, drtg: 120 },
+    ],
+  },
+  // ── WESTERN CONFERENCE ─────────────────────────────────────────────────────
   OKC: {
     confRank: 1,
-    roster: [
-      { name: "Shai Gilgeous-Alexander", pos: "SG", jersey: 2, gp: 54, mpg: 34.2, ppg: 30.8, rpg: 5.4, apg: 6.2, spg: 2.0, bpg: 0.8, fgPct: 51.0, tpPct: 34.8, ftPct: 87.4 },
-      { name: "Jalen Williams", pos: "SF", jersey: 8, gp: 54, mpg: 32.8, ppg: 20.4, rpg: 5.6, apg: 5.0, spg: 1.2, bpg: 0.6, fgPct: 48.6, tpPct: 36.2, ftPct: 80.8 },
-      { name: "Chet Holmgren", pos: "C", jersey: 7, gp: 48, mpg: 30.2, ppg: 16.8, rpg: 8.2, apg: 2.4, spg: 0.8, bpg: 2.4, fgPct: 54.2, tpPct: 34.6, ftPct: 79.8 },
-      { name: "Lu Dort", pos: "SG", jersey: 5, gp: 52, mpg: 28.6, ppg: 10.6, rpg: 3.8, apg: 1.8, spg: 1.4, bpg: 0.4, fgPct: 44.8, tpPct: 36.4, ftPct: 78.2 },
-      { name: "Josh Giddey", pos: "PG", jersey: 3, gp: 50, mpg: 26.4, ppg: 12.2, rpg: 6.2, apg: 4.8, spg: 0.8, bpg: 0.2, fgPct: 47.2, tpPct: 32.8, ftPct: 72.4 },
-      { name: "Isaiah Joe", pos: "SG", jersey: 11, gp: 54, mpg: 20.4, ppg: 9.8, rpg: 2.4, apg: 1.2, spg: 0.6, bpg: 0.2, fgPct: 44.6, tpPct: 40.2, ftPct: 86.4 },
-      { name: "Kenrich Williams", pos: "PF", jersey: 34, gp: 48, mpg: 18.2, ppg: 5.4, rpg: 3.6, apg: 2.0, spg: 0.8, bpg: 0.4, fgPct: 50.2, tpPct: 38.4, ftPct: 74.0 },
-      { name: "Cason Wallace", pos: "PG", jersey: 22, gp: 52, mpg: 16.8, ppg: 6.2, rpg: 2.2, apg: 2.4, spg: 1.0, bpg: 0.4, fgPct: 42.8, tpPct: 34.2, ftPct: 80.6 },
-    ],
-    teamStats: { ortg: 122.4, drtg: 106.2, pace: 99.4, netRtg: 16.2, efgPct: 56.4, tovPct: 11.8, orbPct: 26.2, ftRate: 24.8 },
-    homeRecord: "24-3", awayRecord: "19-8",
-    homeSplits: { ppg: 124.2, oppPpg: 106.4, fgPct: 50.8, tpPct: 37.6 },
-    awaySplits: { ppg: 118.8, oppPpg: 111.4, fgPct: 47.2, tpPct: 34.8 },
+    teamStats: { ortg: 121.4, drtg: 105.8, pace: 99.2, netRtg: 15.6, efgPct: 56.8, tovPct: 11.6, orbPct: 26.4, ftRate: 24.2 },
+    homeRecord: "24-4", awayRecord: "19-7",
+    homeSplits: { ppg: 124.2, oppPpg: 105.8, fgPct: 50.6, tpPct: 38.4 },
+    awaySplits: { ppg: 118.8, oppPpg: 110.4, fgPct: 47.0, tpPct: 35.4 },
     ratingHistory: [
-      { game: "G1-5", ortg: 120, drtg: 108 }, { game: "G6-10", ortg: 124, drtg: 104 },
-      { game: "G11-15", ortg: 122, drtg: 106 }, { game: "G16-20", ortg: 126, drtg: 105 },
-      { game: "G21-25", ortg: 121, drtg: 107 }, { game: "G26-30", ortg: 123, drtg: 106 },
-      { game: "G31-35", ortg: 118, drtg: 110 }, { game: "G36-40", ortg: 125, drtg: 104 },
-      { game: "G41-45", ortg: 122, drtg: 106 }, { game: "G46-50", ortg: 120, drtg: 108 },
-      { game: "G51-54", ortg: 124, drtg: 105 },
+      { game: "G1-5", ortg: 118, drtg: 108 }, { game: "G6-10", ortg: 122, drtg: 106 },
+      { game: "G11-15", ortg: 120, drtg: 106 }, { game: "G16-20", ortg: 124, drtg: 104 },
+      { game: "G21-25", ortg: 121, drtg: 106 }, { game: "G26-30", ortg: 122, drtg: 105 },
+      { game: "G31-35", ortg: 119, drtg: 108 }, { game: "G36-40", ortg: 124, drtg: 104 },
+      { game: "G41-45", ortg: 121, drtg: 105 }, { game: "G46-50", ortg: 120, drtg: 106 },
+      { game: "G51-54", ortg: 123, drtg: 104 },
     ],
-    last10: [
-      { date: "2/19", opp: "GSW", result: "W", score: "128-112" }, { date: "2/17", opp: "LAL", result: "W", score: "118-104" },
-      { date: "2/15", opp: "DEN", result: "W", score: "114-108" }, { date: "2/13", opp: "MIN", result: "W", score: "122-116" },
-      { date: "2/11", opp: "DAL", result: "W", score: "110-102" }, { date: "2/9", opp: "PHX", result: "W", score: "132-118" },
-      { date: "2/7", opp: "SAC", result: "W", score: "120-108" }, { date: "2/5", opp: "MEM", result: "W", score: "126-110" },
-      { date: "2/3", opp: "HOU", result: "L", score: "108-112" }, { date: "2/1", opp: "LAC", result: "W", score: "116-104" },
+    roster: [
+      { name: "Shai Gilgeous-Alexander", pos: "SG", jersey: 2, gp: 54, mpg: 34.6, ppg: 32.4, rpg: 5.6, apg: 6.4, spg: 2.0, bpg: 0.8, fgPct: 51.8, tpPct: 35.4, ftPct: 88.6 },
+      { name: "Jalen Williams", pos: "SF", jersey: 8, gp: 54, mpg: 33.2, ppg: 22.0, rpg: 6.0, apg: 5.2, spg: 1.2, bpg: 0.6, fgPct: 48.8, tpPct: 36.6, ftPct: 81.2 },
+      { name: "Chet Holmgren", pos: "C", jersey: 7, gp: 49, mpg: 30.8, ppg: 18.4, rpg: 8.4, apg: 2.8, spg: 0.8, bpg: 2.6, fgPct: 54.6, tpPct: 35.0, ftPct: 80.2 },
+      { name: "Isaiah Hartenstein", pos: "C", jersey: 55, gp: 50, mpg: 26.4, ppg: 9.6, rpg: 9.4, apg: 3.2, spg: 0.6, bpg: 1.4, fgPct: 58.2, tpPct: 0.0, ftPct: 68.4 },
+      { name: "Lu Dort", pos: "SG", jersey: 5, gp: 52, mpg: 28.8, ppg: 10.8, rpg: 4.0, apg: 1.8, spg: 1.4, bpg: 0.4, fgPct: 45.0, tpPct: 36.8, ftPct: 78.6 },
+      { name: "Alex Caruso", pos: "PG", jersey: 6, gp: 50, mpg: 24.8, ppg: 8.2, rpg: 3.4, apg: 2.6, spg: 1.6, bpg: 0.6, fgPct: 46.8, tpPct: 38.4, ftPct: 84.6 },
+      { name: "Cason Wallace", pos: "PG", jersey: 22, gp: 52, mpg: 22.4, ppg: 10.2, rpg: 3.0, apg: 3.2, spg: 1.2, bpg: 0.4, fgPct: 44.2, tpPct: 35.8, ftPct: 82.0 },
+      { name: "Kenrich Williams", pos: "PF", jersey: 34, gp: 44, mpg: 18.6, ppg: 6.4, rpg: 3.8, apg: 2.0, spg: 0.8, bpg: 0.4, fgPct: 50.4, tpPct: 38.8, ftPct: 75.0 },
     ],
-    next5: [
-      { date: "2/21", opp: "BOS", time: "7:30 PM", home: false }, { date: "2/23", opp: "NYK", time: "1:00 PM", home: true },
-      { date: "2/25", opp: "MIL", time: "8:00 PM", home: true }, { date: "2/28", opp: "CLE", time: "7:00 PM", home: false },
-      { date: "3/2", opp: "MIA", time: "7:30 PM", home: true },
+  },
+  DEN: {
+    confRank: 2,
+    teamStats: { ortg: 119.6, drtg: 111.4, pace: 98.4, netRtg: 8.2, efgPct: 57.2, tovPct: 12.4, orbPct: 24.6, ftRate: 26.8 },
+    homeRecord: "22-8", awayRecord: "16-9",
+    homeSplits: { ppg: 122.0, oppPpg: 111.6, fgPct: 49.4, tpPct: 38.8 },
+    awaySplits: { ppg: 117.2, oppPpg: 114.8, fgPct: 46.8, tpPct: 36.2 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 118, drtg: 113 }, { game: "G6-10", ortg: 120, drtg: 112 },
+      { game: "G11-15", ortg: 119, drtg: 111 }, { game: "G16-20", ortg: 121, drtg: 110 },
+      { game: "G21-25", ortg: 119, drtg: 112 }, { game: "G26-30", ortg: 120, drtg: 111 },
+      { game: "G31-35", ortg: 118, drtg: 112 }, { game: "G36-40", ortg: 121, drtg: 110 },
+      { game: "G41-45", ortg: 119, drtg: 111 }, { game: "G46-50", ortg: 120, drtg: 111 },
+      { game: "G51-54", ortg: 121, drtg: 110 },
+    ],
+  },
+  MIN: {
+    confRank: 3,
+    teamStats: { ortg: 115.2, drtg: 107.8, pace: 97.8, netRtg: 7.4, efgPct: 54.6, tovPct: 12.8, orbPct: 24.2, ftRate: 24.0 },
+    homeRecord: "21-9", awayRecord: "16-9",
+    homeSplits: { ppg: 117.0, oppPpg: 107.2, fgPct: 47.4, tpPct: 36.8 },
+    awaySplits: { ppg: 113.4, oppPpg: 110.6, fgPct: 44.8, tpPct: 34.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 113, drtg: 109 }, { game: "G6-10", ortg: 115, drtg: 108 },
+      { game: "G11-15", ortg: 114, drtg: 108 }, { game: "G16-20", ortg: 116, drtg: 107 },
+      { game: "G21-25", ortg: 115, drtg: 108 }, { game: "G26-30", ortg: 116, drtg: 107 },
+      { game: "G31-35", ortg: 114, drtg: 109 }, { game: "G36-40", ortg: 116, drtg: 107 },
+      { game: "G41-45", ortg: 115, drtg: 108 }, { game: "G46-50", ortg: 116, drtg: 107 },
+      { game: "G51-54", ortg: 116, drtg: 106 },
+    ],
+  },
+  LAC: {
+    confRank: 4,
+    teamStats: { ortg: 116.4, drtg: 110.2, pace: 99.8, netRtg: 6.2, efgPct: 55.2, tovPct: 13.0, orbPct: 23.4, ftRate: 26.4 },
+    homeRecord: "21-9", awayRecord: "14-10",
+    homeSplits: { ppg: 118.4, oppPpg: 110.4, fgPct: 47.8, tpPct: 37.4 },
+    awaySplits: { ppg: 114.2, oppPpg: 113.6, fgPct: 45.2, tpPct: 35.0 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 115, drtg: 112 }, { game: "G6-10", ortg: 116, drtg: 111 },
+      { game: "G11-15", ortg: 116, drtg: 110 }, { game: "G16-20", ortg: 117, drtg: 109 },
+      { game: "G21-25", ortg: 116, drtg: 110 }, { game: "G26-30", ortg: 115, drtg: 111 },
+      { game: "G31-35", ortg: 117, drtg: 109 }, { game: "G36-40", ortg: 116, drtg: 110 },
+      { game: "G41-45", ortg: 117, drtg: 110 }, { game: "G46-50", ortg: 116, drtg: 111 },
+      { game: "G51-54", ortg: 117, drtg: 109 },
+    ],
+  },
+  DAL: {
+    confRank: 5,
+    teamStats: { ortg: 117.8, drtg: 112.2, pace: 100.6, netRtg: 5.6, efgPct: 56.4, tovPct: 13.6, orbPct: 23.0, ftRate: 27.2 },
+    homeRecord: "20-10", awayRecord: "14-11",
+    homeSplits: { ppg: 120.4, oppPpg: 112.4, fgPct: 48.6, tpPct: 38.4 },
+    awaySplits: { ppg: 116.0, oppPpg: 115.6, fgPct: 46.0, tpPct: 35.8 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 116, drtg: 114 }, { game: "G6-10", ortg: 118, drtg: 113 },
+      { game: "G11-15", ortg: 117, drtg: 112 }, { game: "G16-20", ortg: 119, drtg: 111 },
+      { game: "G21-25", ortg: 117, drtg: 112 }, { game: "G26-30", ortg: 118, drtg: 111 },
+      { game: "G31-35", ortg: 116, drtg: 113 }, { game: "G36-40", ortg: 119, drtg: 111 },
+      { game: "G41-45", ortg: 118, drtg: 112 }, { game: "G46-50", ortg: 117, drtg: 113 },
+      { game: "G51-54", ortg: 119, drtg: 111 },
+    ],
+  },
+  PHX: {
+    confRank: 6,
+    teamStats: { ortg: 116.8, drtg: 111.4, pace: 100.2, netRtg: 5.4, efgPct: 55.8, tovPct: 13.2, orbPct: 22.8, ftRate: 25.8 },
+    homeRecord: "20-10", awayRecord: "13-11",
+    homeSplits: { ppg: 119.2, oppPpg: 111.6, fgPct: 48.2, tpPct: 37.8 },
+    awaySplits: { ppg: 115.4, oppPpg: 114.4, fgPct: 45.6, tpPct: 35.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 114, drtg: 113 }, { game: "G6-10", ortg: 116, drtg: 112 },
+      { game: "G11-15", ortg: 116, drtg: 111 }, { game: "G16-20", ortg: 118, drtg: 110 },
+      { game: "G21-25", ortg: 116, drtg: 112 }, { game: "G26-30", ortg: 117, drtg: 111 },
+      { game: "G31-35", ortg: 115, drtg: 112 }, { game: "G36-40", ortg: 118, drtg: 110 },
+      { game: "G41-45", ortg: 117, drtg: 111 }, { game: "G46-50", ortg: 116, drtg: 112 },
+      { game: "G51-54", ortg: 118, drtg: 110 },
+    ],
+  },
+  SAC: {
+    confRank: 7,
+    teamStats: { ortg: 116.2, drtg: 112.6, pace: 101.8, netRtg: 3.6, efgPct: 55.4, tovPct: 13.8, orbPct: 22.4, ftRate: 26.0 },
+    homeRecord: "18-12", awayRecord: "13-11",
+    homeSplits: { ppg: 118.6, oppPpg: 112.8, fgPct: 47.6, tpPct: 37.2 },
+    awaySplits: { ppg: 114.8, oppPpg: 115.2, fgPct: 45.0, tpPct: 35.0 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 115, drtg: 114 }, { game: "G6-10", ortg: 117, drtg: 113 },
+      { game: "G11-15", ortg: 115, drtg: 112 }, { game: "G16-20", ortg: 118, drtg: 111 },
+      { game: "G21-25", ortg: 116, drtg: 112 }, { game: "G26-30", ortg: 114, drtg: 114 },
+      { game: "G31-35", ortg: 117, drtg: 111 }, { game: "G36-40", ortg: 115, drtg: 113 },
+      { game: "G41-45", ortg: 117, drtg: 112 }, { game: "G46-50", ortg: 115, drtg: 113 },
+      { game: "G51-54", ortg: 117, drtg: 111 },
     ],
   },
   LAL: {
     confRank: 8,
-    roster: [
-      { name: "LeBron James", pos: "SF", jersey: 23, gp: 54, mpg: 35.4, ppg: 25.2, rpg: 7.8, apg: 8.4, spg: 1.2, bpg: 0.6, fgPct: 52.4, tpPct: 38.2, ftPct: 75.0 },
-      { name: "Anthony Davis", pos: "PF", jersey: 3, gp: 50, mpg: 34.8, ppg: 24.8, rpg: 12.2, apg: 3.4, spg: 1.2, bpg: 2.2, fgPct: 55.6, tpPct: 28.4, ftPct: 78.6 },
-      { name: "Austin Reaves", pos: "SG", jersey: 15, gp: 54, mpg: 33.2, ppg: 16.4, rpg: 4.4, apg: 5.8, spg: 0.8, bpg: 0.2, fgPct: 48.2, tpPct: 38.6, ftPct: 86.4 },
-      { name: "D'Angelo Russell", pos: "PG", jersey: 1, gp: 52, mpg: 28.6, ppg: 14.2, rpg: 2.8, apg: 5.6, spg: 0.8, bpg: 0.2, fgPct: 44.4, tpPct: 36.4, ftPct: 78.2 },
-      { name: "Rui Hachimura", pos: "PF", jersey: 28, gp: 48, mpg: 24.8, ppg: 12.8, rpg: 4.6, apg: 1.2, spg: 0.4, bpg: 0.4, fgPct: 50.2, tpPct: 34.8, ftPct: 80.4 },
-      { name: "Jarred Vanderbilt", pos: "PF", jersey: 2, gp: 32, mpg: 22.4, ppg: 5.4, rpg: 6.8, apg: 1.6, spg: 1.4, bpg: 0.6, fgPct: 52.8, tpPct: 24.2, ftPct: 62.4 },
-      { name: "Taurean Prince", pos: "SF", jersey: 12, gp: 52, mpg: 18.2, ppg: 7.2, rpg: 2.8, apg: 1.0, spg: 0.4, bpg: 0.2, fgPct: 44.6, tpPct: 38.8, ftPct: 78.0 },
-      { name: "Gabe Vincent", pos: "PG", jersey: 7, gp: 30, mpg: 14.6, ppg: 4.8, rpg: 1.6, apg: 2.2, spg: 0.4, bpg: 0.1, fgPct: 38.4, tpPct: 32.6, ftPct: 84.2 },
-    ],
-    teamStats: { ortg: 114.6, drtg: 113.2, pace: 101.8, netRtg: 1.4, efgPct: 53.4, tovPct: 13.2, orbPct: 23.8, ftRate: 28.4 },
-    homeRecord: "18-9", awayRecord: "12-15",
-    homeSplits: { ppg: 118.2, oppPpg: 112.0, fgPct: 49.4, tpPct: 37.8 },
-    awaySplits: { ppg: 111.4, oppPpg: 116.2, fgPct: 45.2, tpPct: 34.6 },
+    teamStats: { ortg: 115.4, drtg: 112.8, pace: 101.6, netRtg: 2.6, efgPct: 54.2, tovPct: 13.4, orbPct: 23.6, ftRate: 27.8 },
+    homeRecord: "18-12", awayRecord: "12-12",
+    homeSplits: { ppg: 117.6, oppPpg: 112.4, fgPct: 47.2, tpPct: 37.0 },
+    awaySplits: { ppg: 113.4, oppPpg: 115.8, fgPct: 44.8, tpPct: 34.6 },
     ratingHistory: [
-      { game: "G1-5", ortg: 112, drtg: 114 }, { game: "G6-10", ortg: 116, drtg: 112 },
-      { game: "G11-15", ortg: 110, drtg: 116 }, { game: "G16-20", ortg: 118, drtg: 110 },
-      { game: "G21-25", ortg: 114, drtg: 113 }, { game: "G26-30", ortg: 116, drtg: 114 },
-      { game: "G31-35", ortg: 112, drtg: 115 }, { game: "G36-40", ortg: 118, drtg: 112 },
-      { game: "G41-45", ortg: 115, drtg: 113 }, { game: "G46-50", ortg: 113, drtg: 114 },
+      { game: "G1-5", ortg: 112, drtg: 116 }, { game: "G6-10", ortg: 116, drtg: 113 },
+      { game: "G11-15", ortg: 113, drtg: 115 }, { game: "G16-20", ortg: 117, drtg: 111 },
+      { game: "G21-25", ortg: 115, drtg: 113 }, { game: "G26-30", ortg: 116, drtg: 114 },
+      { game: "G31-35", ortg: 113, drtg: 115 }, { game: "G36-40", ortg: 117, drtg: 111 },
+      { game: "G41-45", ortg: 115, drtg: 113 }, { game: "G46-50", ortg: 114, drtg: 112 },
       { game: "G51-54", ortg: 116, drtg: 112 },
     ],
-    last10: [
-      { date: "2/18", opp: "GSW", result: "W", score: "116-108" }, { date: "2/16", opp: "SAC", result: "L", score: "104-112" },
-      { date: "2/14", opp: "DEN", result: "L", score: "108-118" }, { date: "2/12", opp: "POR", result: "W", score: "128-106" },
-      { date: "2/10", opp: "HOU", result: "W", score: "114-108" }, { date: "2/8", opp: "PHX", result: "L", score: "110-116" },
-      { date: "2/6", opp: "UTA", result: "W", score: "122-104" }, { date: "2/4", opp: "SAS", result: "W", score: "118-108" },
-      { date: "2/2", opp: "MIN", result: "L", score: "106-114" }, { date: "1/31", opp: "OKC", result: "L", score: "102-118" },
+    roster: [
+      { name: "LeBron James", pos: "SF", jersey: 23, gp: 54, mpg: 35.0, ppg: 23.8, rpg: 7.4, apg: 8.8, spg: 1.2, bpg: 0.6, fgPct: 52.6, tpPct: 38.8, ftPct: 75.4 },
+      { name: "Anthony Davis", pos: "PF", jersey: 3, gp: 50, mpg: 34.6, ppg: 26.2, rpg: 12.6, apg: 3.8, spg: 1.2, bpg: 2.4, fgPct: 55.8, tpPct: 29.2, ftPct: 79.0 },
+      { name: "Austin Reaves", pos: "SG", jersey: 15, gp: 54, mpg: 33.4, ppg: 17.6, rpg: 4.6, apg: 6.2, spg: 0.8, bpg: 0.2, fgPct: 48.6, tpPct: 39.0, ftPct: 87.0 },
+      { name: "Rui Hachimura", pos: "PF", jersey: 28, gp: 48, mpg: 25.2, ppg: 13.4, rpg: 4.8, apg: 1.4, spg: 0.4, bpg: 0.4, fgPct: 50.4, tpPct: 35.2, ftPct: 81.0 },
+      { name: "Max Christie", pos: "SG", jersey: 10, gp: 52, mpg: 26.8, ppg: 10.8, rpg: 3.2, apg: 1.8, spg: 0.8, bpg: 0.4, fgPct: 47.6, tpPct: 38.6, ftPct: 80.2 },
+      { name: "D'Angelo Russell", pos: "PG", jersey: 1, gp: 48, mpg: 24.6, ppg: 11.4, rpg: 2.6, apg: 5.2, spg: 0.6, bpg: 0.2, fgPct: 43.8, tpPct: 35.8, ftPct: 77.6 },
+      { name: "Dorian Finney-Smith", pos: "PF", jersey: 17, gp: 50, mpg: 22.4, ppg: 8.4, rpg: 4.2, apg: 1.4, spg: 0.8, bpg: 0.4, fgPct: 44.6, tpPct: 38.2, ftPct: 74.0 },
+      { name: "Dalton Knecht", pos: "SF", jersey: 4, gp: 46, mpg: 18.6, ppg: 9.6, rpg: 2.6, apg: 1.2, spg: 0.4, bpg: 0.2, fgPct: 44.2, tpPct: 38.8, ftPct: 78.4 },
     ],
-    next5: [
-      { date: "2/21", opp: "MIL", time: "7:30 PM", home: true }, { date: "2/23", opp: "CLE", time: "3:30 PM", home: true },
-      { date: "2/26", opp: "MIA", time: "7:30 PM", home: false }, { date: "2/28", opp: "ORL", time: "7:00 PM", home: false },
-      { date: "3/1", opp: "ATL", time: "7:30 PM", home: false },
+  },
+  NOP: {
+    confRank: 9,
+    teamStats: { ortg: 113.6, drtg: 113.8, pace: 100.4, netRtg: -0.2, efgPct: 53.6, tovPct: 14.0, orbPct: 23.8, ftRate: 25.4 },
+    homeRecord: "16-14", awayRecord: "12-13",
+    homeSplits: { ppg: 115.4, oppPpg: 113.6, fgPct: 46.4, tpPct: 35.8 },
+    awaySplits: { ppg: 112.0, oppPpg: 116.2, fgPct: 44.0, tpPct: 33.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 113, drtg: 115 }, { game: "G6-10", ortg: 114, drtg: 114 },
+      { game: "G11-15", ortg: 113, drtg: 114 }, { game: "G16-20", ortg: 115, drtg: 113 },
+      { game: "G21-25", ortg: 114, drtg: 113 }, { game: "G26-30", ortg: 112, drtg: 115 },
+      { game: "G31-35", ortg: 114, drtg: 113 }, { game: "G36-40", ortg: 113, drtg: 114 },
+      { game: "G41-45", ortg: 114, drtg: 114 }, { game: "G46-50", ortg: 113, drtg: 114 },
+      { game: "G51-54", ortg: 115, drtg: 112 },
+    ],
+  },
+  GSW: {
+    confRank: 10,
+    teamStats: { ortg: 114.2, drtg: 115.4, pace: 100.8, netRtg: -1.2, efgPct: 54.4, tovPct: 13.4, orbPct: 23.2, ftRate: 23.8 },
+    homeRecord: "16-14", awayRecord: "11-14",
+    homeSplits: { ppg: 116.2, oppPpg: 115.2, fgPct: 47.0, tpPct: 37.6 },
+    awaySplits: { ppg: 112.8, oppPpg: 118.0, fgPct: 44.4, tpPct: 35.2 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 114, drtg: 116 }, { game: "G6-10", ortg: 115, drtg: 115 },
+      { game: "G11-15", ortg: 113, drtg: 115 }, { game: "G16-20", ortg: 115, drtg: 114 },
+      { game: "G21-25", ortg: 114, drtg: 116 }, { game: "G26-30", ortg: 115, drtg: 114 },
+      { game: "G31-35", ortg: 113, drtg: 116 }, { game: "G36-40", ortg: 115, drtg: 115 },
+      { game: "G41-45", ortg: 114, drtg: 115 }, { game: "G46-50", ortg: 113, drtg: 116 },
+      { game: "G51-54", ortg: 115, drtg: 114 },
+    ],
+  },
+  HOU: {
+    confRank: 11,
+    teamStats: { ortg: 113.0, drtg: 115.2, pace: 100.6, netRtg: -2.2, efgPct: 53.2, tovPct: 14.2, orbPct: 23.6, ftRate: 26.2 },
+    homeRecord: "14-14", awayRecord: "11-15",
+    homeSplits: { ppg: 114.8, oppPpg: 114.6, fgPct: 46.0, tpPct: 35.4 },
+    awaySplits: { ppg: 111.2, oppPpg: 117.8, fgPct: 43.6, tpPct: 33.2 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 111, drtg: 117 }, { game: "G6-10", ortg: 112, drtg: 116 },
+      { game: "G11-15", ortg: 113, drtg: 116 }, { game: "G16-20", ortg: 114, drtg: 115 },
+      { game: "G21-25", ortg: 113, drtg: 115 }, { game: "G26-30", ortg: 112, drtg: 116 },
+      { game: "G31-35", ortg: 114, drtg: 115 }, { game: "G36-40", ortg: 113, drtg: 116 },
+      { game: "G41-45", ortg: 113, drtg: 115 }, { game: "G46-50", ortg: 114, drtg: 114 },
+      { game: "G51-54", ortg: 114, drtg: 114 },
+    ],
+  },
+  MEM: {
+    confRank: 12,
+    teamStats: { ortg: 112.8, drtg: 115.6, pace: 101.4, netRtg: -2.8, efgPct: 52.8, tovPct: 14.4, orbPct: 24.0, ftRate: 25.8 },
+    homeRecord: "14-15", awayRecord: "10-15",
+    homeSplits: { ppg: 114.4, oppPpg: 115.0, fgPct: 45.6, tpPct: 34.8 },
+    awaySplits: { ppg: 110.8, oppPpg: 118.2, fgPct: 43.2, tpPct: 32.6 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 112, drtg: 117 }, { game: "G6-10", ortg: 113, drtg: 116 },
+      { game: "G11-15", ortg: 112, drtg: 116 }, { game: "G16-20", ortg: 113, drtg: 115 },
+      { game: "G21-25", ortg: 112, drtg: 116 }, { game: "G26-30", ortg: 111, drtg: 117 },
+      { game: "G31-35", ortg: 113, drtg: 116 }, { game: "G36-40", ortg: 112, drtg: 116 },
+      { game: "G41-45", ortg: 113, drtg: 115 }, { game: "G46-50", ortg: 112, drtg: 116 },
+      { game: "G51-54", ortg: 114, drtg: 115 },
+    ],
+  },
+  SAS: {
+    confRank: 13,
+    teamStats: { ortg: 111.4, drtg: 117.6, pace: 100.0, netRtg: -6.2, efgPct: 51.8, tovPct: 14.8, orbPct: 23.4, ftRate: 27.4 },
+    homeRecord: "12-17", awayRecord: "8-17",
+    homeSplits: { ppg: 113.0, oppPpg: 116.8, fgPct: 44.8, tpPct: 33.6 },
+    awaySplits: { ppg: 109.6, oppPpg: 120.4, fgPct: 42.4, tpPct: 31.4 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 110, drtg: 119 }, { game: "G6-10", ortg: 111, drtg: 118 },
+      { game: "G11-15", ortg: 110, drtg: 118 }, { game: "G16-20", ortg: 112, drtg: 117 },
+      { game: "G21-25", ortg: 111, drtg: 118 }, { game: "G26-30", ortg: 110, drtg: 119 },
+      { game: "G31-35", ortg: 112, drtg: 117 }, { game: "G36-40", ortg: 111, drtg: 118 },
+      { game: "G41-45", ortg: 112, drtg: 117 }, { game: "G46-50", ortg: 111, drtg: 118 },
+      { game: "G51-54", ortg: 113, drtg: 116 },
+    ],
+  },
+  UTA: {
+    confRank: 14,
+    teamStats: { ortg: 110.6, drtg: 118.4, pace: 100.8, netRtg: -7.8, efgPct: 51.2, tovPct: 15.2, orbPct: 22.6, ftRate: 24.8 },
+    homeRecord: "11-18", awayRecord: "7-18",
+    homeSplits: { ppg: 112.0, oppPpg: 117.6, fgPct: 44.4, tpPct: 33.2 },
+    awaySplits: { ppg: 108.6, oppPpg: 121.0, fgPct: 42.0, tpPct: 31.0 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 110, drtg: 120 }, { game: "G6-10", ortg: 111, drtg: 119 },
+      { game: "G11-15", ortg: 110, drtg: 118 }, { game: "G16-20", ortg: 111, drtg: 118 },
+      { game: "G21-25", ortg: 110, drtg: 119 }, { game: "G26-30", ortg: 109, drtg: 120 },
+      { game: "G31-35", ortg: 111, drtg: 118 }, { game: "G36-40", ortg: 110, drtg: 119 },
+      { game: "G41-45", ortg: 111, drtg: 118 }, { game: "G46-50", ortg: 110, drtg: 119 },
+      { game: "G51-54", ortg: 111, drtg: 118 },
+    ],
+  },
+  POR: {
+    confRank: 15,
+    teamStats: { ortg: 108.8, drtg: 120.2, pace: 101.2, netRtg: -11.4, efgPct: 50.6, tovPct: 15.6, orbPct: 22.0, ftRate: 25.2 },
+    homeRecord: "9-20", awayRecord: "5-20",
+    homeSplits: { ppg: 110.4, oppPpg: 119.6, fgPct: 43.6, tpPct: 32.4 },
+    awaySplits: { ppg: 107.0, oppPpg: 122.4, fgPct: 41.2, tpPct: 30.2 },
+    ratingHistory: [
+      { game: "G1-5", ortg: 108, drtg: 122 }, { game: "G6-10", ortg: 109, drtg: 121 },
+      { game: "G11-15", ortg: 108, drtg: 120 }, { game: "G16-20", ortg: 110, drtg: 119 },
+      { game: "G21-25", ortg: 108, drtg: 120 }, { game: "G26-30", ortg: 107, drtg: 122 },
+      { game: "G31-35", ortg: 109, drtg: 121 }, { game: "G36-40", ortg: 108, drtg: 121 },
+      { game: "G41-45", ortg: 109, drtg: 120 }, { game: "G46-50", ortg: 108, drtg: 121 },
+      { game: "G51-54", ortg: 110, drtg: 119 },
     ],
   },
 };
@@ -2336,65 +2708,255 @@ function Footer() {
 
 // --- Placeholder Page ---
 // --- Games Page ---
+function fmtDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function GamesPage({ onGameClick }) {
   const liveData = useLiveData();
-  const sortedGames = useMemo(() => {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekGames, setWeekGames] = useState(null); // array of 7 game arrays, null while loading
+  const [weekLoading, setWeekLoading] = useState(false);
+
+  const todayStr = useMemo(() => fmtDateStr(new Date()), []);
+
+  // Mon–Sun for the viewed week
+  const weekDates = useMemo(() => {
+    const now = new Date();
+    const dow = now.getDay();
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + diffToMon + weekOffset * 7);
+    mon.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(mon);
+      d.setDate(mon.getDate() + i);
+      return d;
+    });
+  }, [weekOffset]);
+
+  // Stable string key for the week (avoids referential instability in useEffect)
+  const weekKey = useMemo(() => weekDates.map(fmtDateStr).join(","), [weekDates]);
+
+  const todayIdx = weekDates.findIndex((d) => fmtDateStr(d) === todayStr);
+  const [selectedDayIdx, setSelectedDayIdx] = useState(() => (todayIdx >= 0 ? todayIdx : 2));
+
+  // When the week changes, auto-select today (if visible) or the closest relevant day
+  useEffect(() => {
+    const idx = weekDates.findIndex((d) => fmtDateStr(d) === todayStr);
+    setSelectedDayIdx(idx >= 0 ? idx : weekOffset < 0 ? 6 : 0);
+  }, [weekOffset]); // eslint-disable-line
+
+  // Fetch all 7 days in parallel whenever the week changes
+  useEffect(() => {
+    let cancelled = false;
+    setWeekLoading(true);
+    setWeekGames(null);
+    const dateStrs = weekKey.split(",");
+    Promise.all(dateStrs.map((ds) => fetchScoreboard(ds).catch(() => [])))
+      .then((results) => {
+        if (!cancelled) { setWeekGames(results); setWeekLoading(false); }
+      });
+    return () => { cancelled = true; };
+  }, [weekKey]);
+
+  // Games for the selected day — fall back to live scoreboard while loading today
+  const selGames = useMemo(() => {
+    if (weekGames) return weekGames[selectedDayIdx] || [];
+    if (weekOffset === 0 && selectedDayIdx === todayIdx) return liveData.scoreboard;
+    return [];
+  }, [weekGames, selectedDayIdx, weekOffset, todayIdx, liveData.scoreboard]);
+
+  const sortedSelGames = useMemo(() => {
     const order = { LIVE: 0, FINAL: 1, UPCOMING: 2 };
-    return [...liveData.scoreboard].sort((a, b) => order[a.status] - order[b.status]);
-  }, [liveData.scoreboard]);
+    return [...selGames].sort((a, b) => order[a.status] - order[b.status]);
+  }, [selGames]);
+
+  // Bar chart data — one entry per day
+  const DAYS  = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const chartData = useMemo(() => weekDates.map((d, i) => {
+    const games = weekGames?.[i] || [];
+    return {
+      dayLabel:  DAYS[d.getDay()],
+      dateLabel: `${MONTHS[d.getMonth()]} ${d.getDate()}`,
+      final:    games.filter((g) => g.status === "FINAL").length,
+      live:     games.filter((g) => g.status === "LIVE").length,
+      upcoming: games.filter((g) => g.status === "UPCOMING").length,
+      total:    games.length,
+      isToday:  fmtDateStr(d) === todayStr,
+      idx:      i,
+    };
+  }), [weekGames, weekDates, todayStr]);
+
+  const weekLabel = useMemo(() => {
+    const s = weekDates[0], e = weekDates[6];
+    return s.getMonth() === e.getMonth()
+      ? `${MONTHS[s.getMonth()]} ${s.getDate()}–${e.getDate()}, ${e.getFullYear()}`
+      : `${MONTHS[s.getMonth()]} ${s.getDate()} – ${MONTHS[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
+  }, [weekDates]);
+
+  const selDate = weekDates[selectedDayIdx] ?? weekDates[0];
+  const selDayLabel = selDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const isViewingToday = fmtDateStr(selDate) === todayStr;
+
+  const ChartTip = ({ active, payload }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0]?.payload;
+    if (!d) return null;
+    return (
+      <div style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{d.dateLabel}{d.isToday ? " · Today" : ""}</div>
+        {d.live     > 0 && <div style={{ color: "var(--accent-red)"   }}>Live: {d.live}</div>}
+        {d.final    > 0 && <div style={{ color: "var(--accent-green)" }}>Final: {d.final}</div>}
+        {d.upcoming > 0 && <div style={{ color: "var(--accent-amber)" }}>Upcoming: {d.upcoming}</div>}
+        {d.total   === 0 && <div style={{ color: "var(--text-muted)"  }}>No games</div>}
+      </div>
+    );
+  };
+
+  const navBtn = { background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "var(--text-primary)", display: "flex", alignItems: "center" };
 
   return (
     <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 60px" }}>
-      <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
-        <Calendar size={24} style={{ color: "var(--accent-blue)" }} />
-        Today's Games
-      </h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-        {sortedGames.map((game) => {
-          const home = TEAMS[game.homeTeam];
-          const away = TEAMS[game.awayTeam];
-          const isLive = game.status === "LIVE";
-          const isFinal = game.status === "FINAL";
-          return (
-            <div
-              key={game.id}
-              className="card-hover"
-              onClick={() => onGameClick(game.id)}
-              style={{ background: "var(--bg-secondary)", borderRadius: 14, padding: 20, cursor: "pointer", position: "relative", overflow: "hidden" }}
-            >
-              {isLive && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "var(--accent-red)" }} />}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                {isLive ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "var(--accent-red)" }}>
-                    <div className="live-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent-red)" }} />
-                    Q{game.quarter} {game.timeRemaining}
-                  </span>
-                ) : isFinal ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Final</span>
-                ) : (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-blue)" }}>{game.scheduledTime}</span>
-                )}
-                {game.broadcast && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{game.broadcast}</span>}
-              </div>
-              {/* Teams */}
-              {[{ t: away, score: game.awayScore, label: "away" }, { t: home, score: game.homeScore, label: "home" }].map(({ t, score, label }) => (
-                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: label === "away" ? 8 : 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 6, background: t.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "white" }}>{t.abbr}</div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.record}</div>
-                    </div>
-                  </div>
-                  <span className="stat-number" style={{ fontSize: 22, fontWeight: 700, color: game.status !== "UPCOMING" && score >= (label === "away" ? game.homeScore : game.awayScore) ? "var(--text-primary)" : "var(--text-muted)" }}>
-                    {game.status !== "UPCOMING" ? score : "-"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          );
-        })}
+
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
+          <Calendar size={24} style={{ color: "var(--accent-blue)" }} />
+          Games
+        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {weekOffset !== 0 && (
+            <button onClick={() => setWeekOffset(0)} style={{ ...navBtn, fontSize: 12, fontWeight: 600, padding: "6px 14px", background: "var(--accent-blue)", color: "white", border: "none", fontFamily: "'Inter', sans-serif" }}>
+              This Week
+            </button>
+          )}
+          <button onClick={() => setWeekOffset((w) => w - 1)} style={navBtn}><ChevronLeft size={16} /></button>
+          <span style={{ fontSize: 14, fontWeight: 600, minWidth: 200, textAlign: "center" }}>{weekLabel}</span>
+          <button onClick={() => setWeekOffset((w) => w + 1)} style={navBtn}><ChevronRight size={16} /></button>
+        </div>
       </div>
+
+      {/* ── Weekly bar chart ── */}
+      <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border-color)", padding: "20px 16px 10px", marginBottom: 24 }}>
+        <ResponsiveContainer width="100%" height={170}>
+          <BarChart
+            data={chartData}
+            barCategoryGap="30%"
+            onClick={(e) => { if (e?.activePayload?.[0]) setSelectedDayIdx(e.activePayload[0].payload.idx); }}
+            style={{ cursor: "pointer" }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+            <XAxis
+              dataKey="dayLabel"
+              axisLine={false}
+              tickLine={false}
+              height={44}
+              tick={(props) => {
+                const { x, y, index } = props;
+                const d = chartData[index];
+                const isSel = index === selectedDayIdx;
+                return (
+                  <g transform={`translate(${x},${y})`}>
+                    <text dy={12} textAnchor="middle" fontSize={12} fontWeight={isSel ? 700 : 500}
+                      fill={isSel ? "var(--accent-blue)" : d.isToday ? "var(--text-primary)" : "var(--text-muted)"}>
+                      {d.dayLabel}
+                    </text>
+                    <text dy={26} textAnchor="middle" fontSize={10} fill="var(--text-muted)">{d.dateLabel}</text>
+                    {d.isToday && <circle cx={0} cy={32} r={2.5} fill="var(--accent-blue)" />}
+                  </g>
+                );
+              }}
+            />
+            <YAxis hide domain={[0, "auto"]} />
+            <Tooltip content={<ChartTip />} cursor={{ fill: "rgba(0,0,0,0.04)", radius: 4 }} />
+            <Bar dataKey="final" stackId="a" name="Final">
+              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#16a34a" : "rgba(22,163,74,0.35)"} />)}
+            </Bar>
+            <Bar dataKey="live" stackId="a" name="Live">
+              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#dc2626" : "rgba(220,38,38,0.35)"} />)}
+            </Bar>
+            <Bar dataKey="upcoming" stackId="a" name="Upcoming" radius={[4, 4, 0, 0]}>
+              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#d97706" : "rgba(217,119,6,0.3)"} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        <div style={{ display: "flex", justifyContent: "center", gap: 20, fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "var(--accent-green)" }} />Final</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "var(--accent-red)" }} />Live</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "var(--accent-amber)" }} />Upcoming</span>
+        </div>
+      </div>
+
+      {/* ── Selected day header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+          {selDayLabel}
+          {isViewingToday && (
+            <span style={{ fontSize: 11, background: "var(--accent-blue)", color: "white", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>Today</span>
+          )}
+        </h2>
+        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          {weekLoading ? "Loading…" : `${sortedSelGames.length} game${sortedSelGames.length !== 1 ? "s" : ""}`}
+        </span>
+      </div>
+
+      {/* ── Game cards ── */}
+      {weekLoading ? (
+        <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)", fontSize: 14 }}>Loading games…</div>
+      ) : sortedSelGames.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "48px 0" }}>
+          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No games scheduled</p>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+          {sortedSelGames.map((game) => {
+            const home = TEAMS[game.homeTeam];
+            const away = TEAMS[game.awayTeam];
+            const isLive = game.status === "LIVE";
+            const isFinal = game.status === "FINAL";
+            if (!home || !away) return null;
+            return (
+              <div
+                key={game.id}
+                className="card-hover"
+                onClick={() => onGameClick(game.id, game)}
+                style={{ background: "var(--bg-secondary)", borderRadius: 14, padding: 20, cursor: "pointer", position: "relative", overflow: "hidden" }}
+              >
+                {isLive && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "var(--accent-red)" }} />}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  {isLive ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "var(--accent-red)" }}>
+                      <div className="live-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent-red)" }} />
+                      Q{game.quarter} {game.timeRemaining}
+                    </span>
+                  ) : isFinal ? (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Final</span>
+                  ) : (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-blue)" }}>{game.scheduledTime}</span>
+                  )}
+                  {game.broadcast && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{game.broadcast}</span>}
+                </div>
+                {[{ t: away, score: game.awayScore, label: "away" }, { t: home, score: game.homeScore, label: "home" }].map(({ t, score, label }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: label === "away" ? 8 : 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 6, background: t.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "white" }}>{t.abbr}</div>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.record}</div>
+                      </div>
+                    </div>
+                    <span className="stat-number" style={{ fontSize: 22, fontWeight: 700, color: game.status !== "UPCOMING" && score >= (label === "away" ? game.homeScore : game.awayScore) ? "var(--text-primary)" : "var(--text-muted)" }}>
+                      {game.status !== "UPCOMING" ? score : "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -4053,7 +4615,6 @@ function TeamBrowsePage({ onTeamSelect }) {
   const renderCard = (t) => {
     const [w, l] = t.record.split("-").map(Number);
     const pct = (w / (w + l)).toFixed(3).slice(1);
-    const hasDetail = !!TEAM_DETAILS[t.abbr];
     return (
       <div
         key={t.abbr}
@@ -4087,11 +4648,6 @@ function TeamBrowsePage({ onTeamSelect }) {
               <span className="stat-number" style={{ fontSize: 13, color: "var(--text-muted)" }}>
                 {pct}
               </span>
-              {hasDetail && (
-                <span style={{ fontSize: 9, background: "rgba(59,130,246,0.15)", color: "var(--accent-blue)", padding: "2px 6px", borderRadius: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  Full Stats
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -4228,6 +4784,32 @@ function TeamDetailPage({ teamAbbr, onBack }) {
   const team = TEAMS[teamAbbr];
   const detail = TEAM_DETAILS[teamAbbr];
 
+  // Build roster from live player data, fall back to static detail (must be before early return)
+  const roster = useMemo(() => {
+    if (liveData.livePlayers?.length) {
+      const teamPlayers = liveData.livePlayers
+        .filter((p) => p.team === teamAbbr)
+        .map((p) => ({ ...p, jersey: p.jersey ?? "—" }));
+      if (teamPlayers.length > 0) return teamPlayers;
+    }
+    return detail?.roster || [];
+  }, [liveData.livePlayers, teamAbbr, detail]);
+
+  // Roster sort state (must be before early return — React hooks rules)
+  const [rosterSort, setRosterSort] = useState("ppg");
+  const [rosterSortAsc, setRosterSortAsc] = useState(false);
+
+  // Fetch live team game log (must be before early return — React hooks rules)
+  const [liveGameLog, setLiveGameLog] = useState(null);
+  useEffect(() => {
+    if (!liveData.isLive) return;
+    let cancelled = false;
+    fetchTeamGameLog(teamAbbr)
+      .then((data) => { if (!cancelled && data) setLiveGameLog(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [teamAbbr, liveData.isLive]);
+
   if (!team) {
     return (
       <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
@@ -4245,6 +4827,11 @@ function TeamDetailPage({ teamAbbr, onBack }) {
   const standing = liveData.standings[conf].find((s) => s.team === teamAbbr);
   const streak = standing?.streak || "—";
   const confRank = detail?.confRank || (liveData.standings[conf].findIndex((s) => s.team === teamAbbr) + 1);
+  // Prefer live standings home/away records; fall back to static detail
+  const homeRecord = standing?.home || detail?.homeRecord || "—";
+  const awayRecord = standing?.away || detail?.awayRecord || "—";
+
+  const last10 = liveGameLog || [];
 
   const ChartTooltipContent = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -4298,56 +4885,11 @@ function TeamDetailPage({ teamAbbr, onBack }) {
         </div>
       </div>
 
-      {!detail ? (
-        /* Fallback for teams without detailed data */
-        <div style={{ textAlign: "center", padding: "60px 0" }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-            <Shield size={28} style={{ color: "var(--accent-blue)" }} />
-          </div>
-          <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>Detailed team stats not available yet.</p>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>Try BOS, OKC, or LAL for full team breakdowns.</p>
-        </div>
-      ) : (
-        <>
-          {/* ===== ROSTER TABLE ===== */}
-          <div style={{ marginBottom: 28 }}>
-            <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              <Users size={18} style={{ color: "var(--accent-blue)" }} />
-              Roster
-            </h2>
-            <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden", overflowX: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 36px 36px 36px 42px 42px 42px 42px 42px 42px 42px 42px", padding: "8px 14px", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)", textTransform: "uppercase", letterSpacing: "0.5px", minWidth: 640 }}>
-                {["Player", "Pos", "#", "GP", "MPG", "PPG", "RPG", "APG", "SPG", "BPG", "FG%", "3P%"].map((h) => (
-                  <span key={h} className={h !== "Player" ? "stat-number" : ""} style={{ textAlign: h === "Player" ? "left" : "center" }}>{h}</span>
-                ))}
-              </div>
-              {detail.roster.map((p, idx) => (
-                <div
-                  key={p.name}
-                  style={{ display: "grid", gridTemplateColumns: "1fr 36px 36px 36px 42px 42px 42px 42px 42px 42px 42px 42px", padding: "9px 14px", fontSize: 12, borderBottom: idx < detail.roster.length - 1 ? "1px solid var(--border-color)" : "none", alignItems: "center", transition: "background 0.15s", minWidth: 640 }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-muted)" }}>{p.pos}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-muted)" }}>{p.jersey}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.gp}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.mpg}</span>
-                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 700, color: p.ppg >= 20 ? "var(--accent-blue)" : "var(--text-primary)" }}>{p.ppg}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: p.rpg >= 8 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{p.rpg}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: p.apg >= 5 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{p.apg}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.spg}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.bpg}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.fgPct}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: p.tpPct >= 40 ? "var(--accent-green)" : "var(--text-secondary)" }}>{p.tpPct}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ===== STATS DASHBOARD: Ratings Chart + Four Factors ===== */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 }}>
-            {/* Off/Def Rating Over Time */}
+      {/* ===== STATS DASHBOARD: Ratings Chart + Four Factors ===== */}
+      {detail?.teamStats && (
+        <div style={{ display: "grid", gridTemplateColumns: detail.ratingHistory?.length ? "1fr 1fr" : "1fr", gap: 20, marginBottom: 28 }}>
+          {/* Off/Def Rating Over Time — only shown when history data exists */}
+          {detail.ratingHistory?.length > 0 && (
             <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: 20 }}>
               <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
                 <Activity size={14} style={{ color: "var(--accent-blue)" }} />
@@ -4368,170 +4910,229 @@ function TeamDetailPage({ teamAbbr, onBack }) {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          )}
 
-            {/* Four Factors + Pace */}
-            <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: 20 }}>
-              <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
-                <BarChart3 size={14} style={{ color: "var(--accent-amber)" }} />
-                Four Factors & Pace
-              </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                {[
-                  { label: "eFG%", value: detail.teamStats.efgPct, desc: "Effective FG% adjusts for 3-pointers being worth more", avg: 53.0 },
-                  { label: "TOV%", value: detail.teamStats.tovPct, desc: "Turnover rate — lower is better", avg: 13.0, invert: true },
-                  { label: "ORB%", value: detail.teamStats.orbPct, desc: "Offensive rebound percentage", avg: 24.0 },
-                  { label: "FT Rate", value: detail.teamStats.ftRate, desc: "Free throw attempts per FGA", avg: 25.0 },
-                  { label: "Pace", value: detail.teamStats.pace, desc: "Possessions per 48 minutes", avg: 100.0 },
-                  { label: "Net Rtg", value: detail.teamStats.netRtg, desc: "Point differential per 100 possessions", avg: 0 },
-                ].map((f) => {
-                  const better = f.invert ? f.value < f.avg : f.value > f.avg;
-                  return (
-                    <div key={f.label} style={{ background: "var(--bg-tertiary)", borderRadius: 8, padding: "14px 14px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>{f.label}</span>
-                        <span className="stat-number" style={{ fontSize: 18, fontWeight: 700, color: better ? "var(--accent-green)" : "var(--accent-red)" }}>{f.value}</span>
-                      </div>
-                      <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4 }}>{f.desc}</div>
-                      {/* Mini bar */}
-                      <div style={{ marginTop: 8, height: 4, borderRadius: 2, background: "var(--bg-primary)", overflow: "hidden" }}>
-                        <div style={{ height: "100%", borderRadius: 2, background: better ? "var(--accent-green)" : "var(--accent-red)", width: `${Math.min(100, (f.value / (f.avg * 1.3)) * 100)}%`, transition: "width 0.4s" }} />
-                      </div>
+          {/* Four Factors + Pace */}
+          <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: 20 }}>
+            <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+              <BarChart3 size={14} style={{ color: "var(--accent-amber)" }} />
+              Four Factors & Pace
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {[
+                { label: "eFG%", value: detail.teamStats.efgPct, desc: "Effective FG% adjusts for 3-pointers being worth more", avg: 53.0 },
+                { label: "TOV%", value: detail.teamStats.tovPct, desc: "Turnover rate — lower is better", avg: 13.0, invert: true },
+                { label: "ORB%", value: detail.teamStats.orbPct, desc: "Offensive rebound percentage", avg: 24.0 },
+                { label: "FT Rate", value: detail.teamStats.ftRate, desc: "Free throw attempts per FGA", avg: 25.0 },
+                { label: "Pace", value: detail.teamStats.pace, desc: "Possessions per 48 minutes", avg: 100.0 },
+                { label: "Net Rtg", value: detail.teamStats.netRtg, desc: "Point differential per 100 possessions", avg: 0 },
+              ].map((f) => {
+                const better = f.invert ? f.value < f.avg : f.value > f.avg;
+                const barWidth = f.avg !== 0
+                  ? Math.min(100, Math.max(0, (f.value / (f.avg * 1.3)) * 100))
+                  : Math.min(100, Math.max(0, (f.value + 20) * 2.5));
+                return (
+                  <div key={f.label} style={{ background: "var(--bg-tertiary)", borderRadius: 8, padding: "14px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>{f.label}</span>
+                      <span className="stat-number" style={{ fontSize: 18, fontWeight: 700, color: better ? "var(--accent-green)" : "var(--accent-red)" }}>{f.value}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4 }}>{f.desc}</div>
+                    {/* Mini bar */}
+                    <div style={{ marginTop: 8, height: 4, borderRadius: 2, background: "var(--bg-primary)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", borderRadius: 2, background: better ? "var(--accent-green)" : "var(--accent-red)", width: `${barWidth}%`, transition: "width 0.4s" }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
+        </div>
+      )}
 
-          {/* ===== HOME VS AWAY SPLITS ===== */}
+      {/* ===== HOME VS AWAY SPLITS ===== */}
+      {detail?.homeSplits && (
+        <div style={{ marginBottom: 28 }}>
+          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <Home size={18} style={{ color: "var(--accent-blue)" }} />
+            Home vs. Away Splits
+          </h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {[
+              { label: "Home", record: homeRecord, splits: detail.homeSplits },
+              { label: "Away", record: awayRecord, splits: detail.awaySplits },
+            ].map((s) => (
+              <div key={s.label} style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: "20px 24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <span style={{ fontSize: 16, fontWeight: 700 }}>{s.label}</span>
+                  <span className="stat-number" style={{ fontSize: 18, fontWeight: 700, color: "var(--accent-blue)" }}>{s.record}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                  {[
+                    { label: "PPG", value: s.splits.ppg },
+                    { label: "Opp PPG", value: s.splits.oppPpg },
+                    { label: "FG%", value: s.splits.fgPct },
+                    { label: "3P%", value: s.splits.tpPct },
+                  ].map((stat) => (
+                    <div key={stat.label} style={{ textAlign: "center" }}>
+                      <div className="stat-number" style={{ fontSize: 16, fontWeight: 700 }}>{stat.value}</div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ===== ROSTER TABLE ===== */}
+      {roster.length > 0 && (() => {
+        const ROSTER_COLS = [
+          { key: "name",   label: "Player", numeric: false },
+          { key: "pos",    label: "Pos",    numeric: false },
+          { key: "jersey", label: "#",      numeric: true  },
+          { key: "gp",     label: "GP",     numeric: true  },
+          { key: "mpg",    label: "MPG",    numeric: true  },
+          { key: "ppg",    label: "PPG",    numeric: true  },
+          { key: "rpg",    label: "RPG",    numeric: true  },
+          { key: "apg",    label: "APG",    numeric: true  },
+          { key: "spg",    label: "SPG",    numeric: true  },
+          { key: "bpg",    label: "BPG",    numeric: true  },
+          { key: "fgPct",  label: "FG%",    numeric: true  },
+          { key: "tpPct",  label: "3P%",    numeric: true  },
+        ];
+        const sortedRoster = [...roster].sort((a, b) => {
+          const av = parseFloat(a[rosterSort] ?? 0);
+          const bv = parseFloat(b[rosterSort] ?? 0);
+          const isNum = !isNaN(av) && !isNaN(bv);
+          const cmp = isNum ? av - bv : String(a[rosterSort] ?? "").localeCompare(String(b[rosterSort] ?? ""));
+          return rosterSortAsc ? cmp : -cmp;
+        });
+        const gridTpl = "1fr 36px 36px 36px 42px 42px 42px 42px 42px 42px 42px 42px";
+        const ROW_H = 37; // px per row
+        const VISIBLE = 8;
+        return (
           <div style={{ marginBottom: 28 }}>
             <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              <Home size={18} style={{ color: "var(--accent-blue)" }} />
-              Home vs. Away Splits
+              <Users size={18} style={{ color: "var(--accent-blue)" }} />
+              Roster
             </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              {[
-                { label: "Home", record: detail.homeRecord, splits: detail.homeSplits },
-                { label: "Away", record: detail.awayRecord, splits: detail.awaySplits },
-              ].map((s) => (
-                <div key={s.label} style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: "20px 24px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <span style={{ fontSize: 16, fontWeight: 700 }}>{s.label}</span>
-                    <span className="stat-number" style={{ fontSize: 18, fontWeight: 700, color: "var(--accent-blue)" }}>{s.record}</span>
+            <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+              {/* Sticky header — outside the scrollable area */}
+              <div style={{ overflowX: "auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "8px 14px", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)", textTransform: "uppercase", letterSpacing: "0.5px", minWidth: 640 }}>
+                  {ROSTER_COLS.map((col) => {
+                    const active = rosterSort === col.key;
+                    return (
+                      <span
+                        key={col.key}
+                        className={col.numeric ? "stat-number" : ""}
+                        onClick={() => {
+                          if (active) setRosterSortAsc((a) => !a);
+                          else { setRosterSort(col.key); setRosterSortAsc(false); }
+                        }}
+                        style={{ textAlign: col.key === "name" ? "left" : "center", cursor: "pointer", userSelect: "none", color: active ? "var(--accent-blue)" : "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: 3, justifyContent: col.key === "name" ? "flex-start" : "center" }}
+                      >
+                        {col.label}
+                        {active && <span style={{ fontSize: 9 }}>{rosterSortAsc ? "▲" : "▼"}</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+                {/* Scrollable body — max 8 rows */}
+                <div style={{ overflowY: "auto", maxHeight: ROW_H * VISIBLE, overflowX: "hidden" }}>
+                  {sortedRoster.map((p, idx) => (
+                    <div
+                      key={p.name}
+                      style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "9px 14px", fontSize: 12, borderBottom: idx < sortedRoster.length - 1 ? "1px solid var(--border-color)" : "none", alignItems: "center", transition: "background 0.15s", minWidth: 640 }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: "var(--text-muted)" }}>{p.pos}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: "var(--text-muted)" }}>{p.jersey ?? "—"}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.gp}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.mpg}</span>
+                      <span className="stat-number" style={{ textAlign: "center", fontWeight: 700, color: parseFloat(p.ppg) >= 20 ? "var(--accent-blue)" : "var(--text-primary)" }}>{p.ppg}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: parseFloat(p.rpg) >= 8 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{p.rpg}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: parseFloat(p.apg) >= 5 ? "var(--accent-amber)" : "var(--text-secondary)" }}>{p.apg}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.spg}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.bpg}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{p.fgPct}</span>
+                      <span className="stat-number" style={{ textAlign: "center", color: parseFloat(p.tpPct) >= 40 ? "var(--accent-green)" : "var(--text-secondary)" }}>{p.tpPct}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ===== LAST 10 GAMES — fetched live from NBA API ===== */}
+      {last10.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <Calendar size={18} style={{ color: "var(--accent-blue)" }} />
+            Last 10 Games
+          </h2>
+          <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+            {last10.map((g, idx) => {
+              const opp = TEAMS[g.opp];
+              return (
+                <div
+                  key={idx}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: idx < last10.length - 1 ? "1px solid var(--border-color)" : "none", transition: "background 0.15s" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span className="stat-number" style={{ fontSize: 11, color: "var(--text-muted)", width: 36 }}>{g.date}</span>
+                    <div style={{ width: 20, height: 20, borderRadius: 4, background: opp?.color || "#888", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: "white" }}>{g.opp}</div>
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{opp?.name || g.opp}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{g.home ? "vs." : "@"}</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-                    {[
-                      { label: "PPG", value: s.splits.ppg },
-                      { label: "Opp PPG", value: s.splits.oppPpg },
-                      { label: "FG%", value: s.splits.fgPct },
-                      { label: "3P%", value: s.splits.tpPct },
-                    ].map((stat) => (
-                      <div key={stat.label} style={{ textAlign: "center" }}>
-                        <div className="stat-number" style={{ fontSize: 16, fontWeight: 700 }}>{stat.value}</div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{stat.label}</div>
-                      </div>
-                    ))}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: g.result === "W" ? "var(--accent-green)" : "var(--accent-red)" }}>{g.result}</span>
+                    <span className="stat-number" style={{ fontSize: 13, color: "var(--text-secondary)" }}>{g.score}</span>
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
-
-          {/* ===== SCHEDULE: Last 10 & Next 5 ===== */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            {/* Last 10 */}
-            <div>
-              <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                <Calendar size={18} style={{ color: "var(--accent-blue)" }} />
-                Last 10 Games
-              </h2>
-              <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
-                {detail.last10.map((g, idx) => {
-                  const opp = TEAMS[g.opp];
-                  return (
-                    <div
-                      key={idx}
-                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: idx < detail.last10.length - 1 ? "1px solid var(--border-color)" : "none", transition: "background 0.15s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span className="stat-number" style={{ fontSize: 11, color: "var(--text-muted)", width: 36 }}>{g.date}</span>
-                        <div style={{ width: 20, height: 20, borderRadius: 4, background: opp.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: "white" }}>{g.opp}</div>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{opp.name}</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: g.result === "W" ? "var(--accent-green)" : "var(--accent-red)" }}>{g.result}</span>
-                        <span className="stat-number" style={{ fontSize: 13, color: "var(--text-secondary)" }}>{g.score}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Next 5 */}
-            <div>
-              <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                <ArrowRight size={18} style={{ color: "var(--accent-amber)" }} />
-                Next 5 Games
-              </h2>
-              <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
-                {detail.next5.map((g, idx) => {
-                  const opp = TEAMS[g.opp];
-                  return (
-                    <div
-                      key={idx}
-                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: idx < detail.next5.length - 1 ? "1px solid var(--border-color)" : "none", transition: "background 0.15s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span className="stat-number" style={{ fontSize: 11, color: "var(--text-muted)", width: 36 }}>{g.date}</span>
-                        <div style={{ width: 20, height: 20, borderRadius: 4, background: opp.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: "white" }}>{g.opp}</div>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{opp.name}</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, fontWeight: 600, background: g.home ? "rgba(59,130,246,0.12)" : "rgba(245,158,11,0.12)", color: g.home ? "var(--accent-blue)" : "var(--accent-amber)" }}>
-                          {g.home ? "HOME" : "AWAY"}
-                        </span>
-                        <span className="stat-number" style={{ fontSize: 12, color: "var(--text-muted)" }}>{g.time}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </>
+        </div>
       )}
     </div>
   );
 }
 
 // --- Game Detail Page ---
-function GameDetailPage({ gameId, onBack }) {
+function GameDetailPage({ gameId, onBack, fallbackGame = null }) {
   const liveData = useLiveData();
-  const game = liveData.scoreboard.find((g) => g.id === gameId);
+  const game = liveData.scoreboard.find((g) => g.id === gameId) ?? fallbackGame;
   const mockDetail = mockData.gameDetails[gameId];
   const [liveBoxScore, setLiveBoxScore] = useState(null);
   const [boxScoreLoading, setBoxScoreLoading] = useState(false);
 
-  // Fetch live box score from NBA API when no mock detail exists
+  // Fetch live box score from NBA API when no mock detail exists.
+  // Don't gate on liveData.isLive — for past/future games the fallback game
+  // object is available immediately and we should fetch as soon as we have it.
+  // If the server is unreachable, fetchBoxScore rejects and .catch() handles it.
   useEffect(() => {
-    if (!game || mockDetail || !liveData.isLive) return;
+    if (!game || mockDetail) return;
     if (game.status === "UPCOMING") return;
     let cancelled = false;
     setBoxScoreLoading(true);
     // Always bust the in-memory + localStorage cache so we never show stale
     // empty-player data that was cached while the game was still live.
-    clearEndpointCache("boxscoretraditionalv3");
-    fetchBoxScore(gameId)
+    clearEndpointCache("boxscoretraditionalv2");
+    fetchBoxScore(gameId, game.homeTeam, game.awayTeam)
       .then((data) => { if (!cancelled && data) setLiveBoxScore(data); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setBoxScoreLoading(false); });
     return () => { cancelled = true; };
-  }, [gameId, game?.status, liveData.isLive, mockDetail]);
+  }, [gameId, game?.status, mockDetail]);
 
   const detail = mockDetail || liveBoxScore;
 
@@ -5950,12 +6551,14 @@ function CourtsideAppInner() {
   const [currentPage, setCurrentPage] = useState("home");
   const [showAIModal, setShowAIModal] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState(null);
+  const [selectedGame, setSelectedGame] = useState(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [selectedLivePlayer, setSelectedLivePlayer] = useState(null);
   const [selectedTeamAbbr, setSelectedTeamAbbr] = useState(null);
 
-  const handleGameClick = (gameId) => {
+  const handleGameClick = (gameId, gameData = null) => {
     setSelectedGameId(gameId);
+    setSelectedGame(gameData);
     setCurrentPage("gameDetail");
   };
 
@@ -6025,8 +6628,9 @@ function CourtsideAppInner() {
       case "games":
         return (
           <GamesPage
-            onGameClick={(gameId) => {
+            onGameClick={(gameId, gameData) => {
               setSelectedGameId(gameId);
+              setSelectedGame(gameData ?? null);
               setCurrentPage("gameDetail");
             }}
           />
@@ -6035,6 +6639,7 @@ function CourtsideAppInner() {
         return (
           <GameDetailPage
             gameId={selectedGameId}
+            fallbackGame={selectedGame}
             onBack={(page) => setCurrentPage(page || "home")}
           />
         );
