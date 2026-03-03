@@ -9,6 +9,9 @@ import {
   fetchBoxScore,
   fetchLineups,
   clearEndpointCache,
+  fetchPredictionsToday,
+  fetchPredictionHistory,
+  fetchPredictionAccuracy,
 } from "./src/nbaApi.js";
 import {
   BarChart,
@@ -1010,21 +1013,21 @@ const STYLES = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   :root {
-    --bg-primary: #e8ddd0;
-    --bg-secondary: #ddd1c2;
-    --bg-tertiary: #d3c5b4;
-    --bg-hover: #c9b9a7;
-    --accent-blue: #e8590c;
-    --accent-blue-dim: #c44a09;
-    --accent-amber: #d97706;
-    --accent-amber-dim: #b45309;
-    --accent-green: #16a34a;
-    --accent-red: #dc2626;
-    --text-primary: #1c1309;
-    --text-secondary: #5c4a35;
-    --text-muted: #9e8878;
-    --border-color: #d4c9bc;
-    --border-hover: #b8ab9c;
+    --bg-primary: #f9f8f6;
+    --bg-secondary: #f1efec;
+    --bg-tertiary: #e7e4e0;
+    --bg-hover: #dfdbd6;
+    --accent-blue: #f97316;
+    --accent-blue-dim: #ea580c;
+    --accent-amber: #f59e0b;
+    --accent-amber-dim: #d97706;
+    --accent-green: #22c55e;
+    --accent-red: #ef4444;
+    --text-primary: #1a1a1a;
+    --text-secondary: #5c5956;
+    --text-muted: #9c9996;
+    --border-color: #e5e2de;
+    --border-hover: #ccc8c3;
   }
 
   body {
@@ -1048,8 +1051,8 @@ const STYLES = `
   }
 
   @keyframes glow {
-    0%, 100% { box-shadow: 0 0 5px rgba(232, 89, 12, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(232, 89, 12, 0.6); }
+    0%, 100% { box-shadow: 0 0 5px rgba(249, 115, 22, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.6); }
   }
 
   @keyframes ticker-scroll {
@@ -1070,6 +1073,9 @@ const STYLES = `
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
   .ticker-track {
     animation: ticker-scroll 80s linear infinite;
@@ -1088,11 +1094,13 @@ const STYLES = `
   .card-hover {
     transition: all 0.2s ease;
     border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   }
   .card-hover:hover {
     border-color: var(--border-hover);
     background: var(--bg-hover);
     transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
   }
 
   .nav-link {
@@ -1167,7 +1175,7 @@ const STYLES = `
 // ============================================================================
 
 // --- Navigation Bar ---
-function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSelect }) {
+function NavBar({ currentPage, setCurrentPage, onPlayerSelect, onTeamSelect }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef(null);
@@ -1180,6 +1188,7 @@ function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSe
     { key: "compare", label: "Compare", icon: Layers },
     { key: "lineups", label: "Lineups", icon: Activity },
     { key: "games", label: "Games", icon: Calendar },
+    { key: "predictions", label: "Predictions", icon: Target },
   ];
 
   const searchResults = useMemo(() => {
@@ -1211,7 +1220,7 @@ function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSe
   return (
     <nav
       style={{
-        background: "rgba(232, 221, 208, 0.95)",
+        background: "rgba(249, 248, 246, 0.92)",
         backdropFilter: "blur(12px)",
         borderBottom: "1px solid var(--border-color)",
         position: "sticky",
@@ -1247,7 +1256,7 @@ function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSe
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: "linear-gradient(135deg, #e8590c, #c44a09)",
+              background: "linear-gradient(135deg, #f97316, #ea580c)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1397,377 +1406,407 @@ function NavBar({ currentPage, setCurrentPage, onAskAI, onPlayerSelect, onTeamSe
               </div>
             )}
           </div>
-          <button
-            onClick={onAskAI}
-            className="ai-glow"
-            style={{
-              background: "linear-gradient(135deg, #e8590c, #d97706)",
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 16px",
-              color: "white",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontFamily: "'Inter', sans-serif",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <Sparkles size={14} />
-            <span className="nav-label">Ask AI</span>
-          </button>
         </div>
       </div>
     </nav>
   );
 }
 
-// --- AI Modal ---
-function AIChatPanel({ onClose }) {
-  const liveData = useLiveData();
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content:
-        "Hey! I'm your NBA analytics assistant. Ask me anything about players, teams, matchups, stats, or strategy. I have access to all the current season data.\n\nTry asking:\n- \"Who's the best scorer this season?\"\n- \"Compare LeBron and Curry\"\n- \"Which teams have the best defense?\"\n- \"Explain what PER means\"",
-    },
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
+// --- Predictions Page ---
+function PredictionsPage() {
+  const [tab, setTab] = useState("today");
+  const [todayData, setTodayData] = useState(null);
+  const [historyData, setHistoryData] = useState(null);
+  const [accuracyData, setAccuracyData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Serialize relevant data as context
-  const buildContext = () => {
-    const standingsSummary = ["East", "West"].map((conf) => {
-      const rows = liveData.standings[conf].map(
-        (s, i) => `${i + 1}. ${TEAMS[s.team]?.city || s.team} ${TEAMS[s.team]?.name || ""} (${s.wins}-${s.losses}, ${s.pct}) Streak: ${s.streak} PPG: ${s.ppg} OPP: ${s.oppPpg} DIFF: ${s.diff}`
-      );
-      return `${conf}ern Conference:\n${rows.join("\n")}`;
-    }).join("\n\n");
-
-    const playerSummary = PLAYERS.map((p) => {
-      const a = p.seasonAvg;
-      return `${p.name} (${TEAMS[p.team]?.city || p.team} ${TEAMS[p.team]?.name || ""}, ${p.pos}, #${p.jersey}): ${a.pts} PPG, ${a.reb} RPG, ${a.ast} APG, ${a.stl} SPG, ${a.blk} BPG, FG% ${a.fgPct}, 3P% ${a.tpPct}, FT% ${a.ftPct}, PER ${a.per}, TS% ${a.ts}, USG% ${a.usg}, BPM ${a.bpm}, VORP ${a.vorp}, WS ${a.ws}`;
-    }).join("\n");
-
-    const leadersSummary = Object.entries(liveData.leaders).map(([cat, players]) => {
-      return `${cat}: ${players.map((p) => `${p.name} (${p.team}) ${p.value}`).join(", ")}`;
-    }).join("\n");
-
-    return `CURRENT NBA SEASON DATA:\n\n--- STANDINGS ---\n${standingsSummary}\n\n--- PLAYER STATS ---\n${playerSummary}\n\n--- LEAGUE LEADERS ---\n${leadersSummary}`;
-  };
-
-  const sendMessage = async () => {
-    const text = input.trim();
-    if (!text || loading) return;
-
-    const userMsg = { role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
     setLoading(true);
-
-    // Build conversation history for the API (skip the initial greeting)
-    const apiMessages = [...messages.slice(1), userMsg].map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": window.__COURTSIDE_API_KEY || "",
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1024,
-          system: `You are an expert NBA analytics assistant embedded in a basketball stats app called Courtside. You have deep knowledge of basketball strategy, statistics, and history. Be concise, insightful, and conversational. Use the season data provided to give data-driven answers. When comparing players or teams, cite specific stats. Format responses with short paragraphs. Do NOT use markdown headers — keep it conversational.\n\n${buildContext()}`,
-          messages: apiMessages,
-        }),
+    setError(null);
+    const fetcher =
+      tab === "today"
+        ? fetchPredictionsToday
+        : tab === "results"
+        ? () => fetchPredictionHistory(7)
+        : fetchPredictionAccuracy;
+    fetcher()
+      .then((d) => {
+        if (tab === "today") setTodayData(d);
+        else if (tab === "results") setHistoryData(d);
+        else setAccuracyData(d);
+        setLoading(false);
+      })
+      .catch((e) => {
+        setError(e.message);
+        setLoading(false);
       });
+  }, [tab]);
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error?.message || `API error ${response.status}`);
-      }
+  const tabs = [
+    { key: "today", label: "Today's Picks" },
+    { key: "results", label: "Yesterday's Results" },
+    { key: "trend", label: "Accuracy Trend" },
+  ];
 
-      const data = await response.json();
-      const assistantText =
-        data.content?.[0]?.text || "Sorry, I couldn't generate a response.";
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: assistantText },
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `I wasn't able to connect to the AI service. To enable the AI assistant, set your API key:\n\n\`window.__COURTSIDE_API_KEY = "your-key"\`\n\nin the browser console.\n\nError: ${err.message}`,
-        },
-      ]);
-    } finally {
-      setLoading(false);
+  const renderConfidenceBar = (confidence) => (
+    <div style={{ height: 6, borderRadius: 3, background: "var(--border-color)", width: "100%", marginTop: 6 }}>
+      <div
+        style={{
+          height: 6,
+          borderRadius: 3,
+          width: `${confidence}%`,
+          background: confidence >= 75 ? "#22c55e" : confidence >= 50 ? "#f97316" : "#ef4444",
+          transition: "width 0.5s ease",
+        }}
+      />
+    </div>
+  );
+
+  const renderTodayTab = () => {
+    if (!todayData) return null;
+    const { predictions, accuracy, date } = todayData;
+
+    if (!predictions || predictions.length === 0) {
+      return (
+        <div className="card-hover" style={{ padding: 32, textAlign: "center" }}>
+          <Info size={40} style={{ color: "var(--text-muted)", marginBottom: 12 }} />
+          <h3 style={{ margin: "0 0 8px" }}>No Predictions Available</h3>
+          <p style={{ color: "var(--text-muted)", fontSize: 14, maxWidth: 400, margin: "0 auto" }}>
+            Predictions are generated daily when ANTHROPIC_API_KEY is configured and there are upcoming games.
+          </p>
+        </div>
+      );
     }
+
+    const upsets = predictions.filter((p) => p.upset_alert);
+    const regular = predictions.filter((p) => !p.upset_alert);
+
+    return (
+      <>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
+            {date ? new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "Today"}
+          </span>
+          {accuracy != null && (
+            <span
+              style={{
+                background: accuracy >= 60 ? "rgba(34,197,94,0.15)" : "rgba(249,115,22,0.15)",
+                color: accuracy >= 60 ? "#22c55e" : "#f97316",
+                padding: "4px 10px",
+                borderRadius: 12,
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            >
+              {accuracy.toFixed(1)}% accuracy (30d)
+            </span>
+          )}
+        </div>
+
+        {upsets.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+              <Flame size={16} style={{ color: "#f59e0b" }} /> Upset Watch
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+              {upsets.map((p, i) => renderPredictionCard(p, i, true))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+          {regular.map((p, i) => renderPredictionCard(p, i, false))}
+        </div>
+      </>
+    );
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
+  const renderPredictionCard = (p, i, isUpset) => {
+    const homeTeam = TEAMS[p.home_team] || {};
+    const awayTeam = TEAMS[p.away_team] || {};
+    let props = [];
+    try { props = p.player_props ? JSON.parse(p.player_props) : []; } catch {}
+
+    return (
+      <div
+        key={i}
+        className="card-hover"
+        style={{
+          padding: 20,
+          border: isUpset ? "1px solid rgba(245,158,11,0.4)" : undefined,
+          position: "relative",
+        }}
+      >
+        {isUpset && (
+          <div style={{ position: "absolute", top: 10, right: 10 }}>
+            <Flame size={16} style={{ color: "#f59e0b" }} />
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 12 }}>
+          <div style={{ textAlign: "center" }}>
+            <TeamLogo abbr={p.away_team} size={36} />
+            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{p.away_team}</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{awayTeam.city || ""}</div>
+          </div>
+
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 700 }}>
+              {p.away_score_pred ?? "?"} — {p.home_score_pred ?? "?"}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>predicted</div>
+          </div>
+
+          <div style={{ textAlign: "center" }}>
+            <TeamLogo abbr={p.home_team} size={36} />
+            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{p.home_team}</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{homeTeam.city || ""}</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>
+            {p.predicted_winner} wins
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              fontFamily: "'JetBrains Mono', monospace",
+              background: "var(--bg-secondary)",
+              padding: "2px 8px",
+              borderRadius: 6,
+            }}
+          >
+            spread: {p.predicted_spread != null ? (p.predicted_spread > 0 ? `+${p.predicted_spread}` : p.predicted_spread) : "—"}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
+          <span style={{ color: "var(--text-muted)" }}>Confidence</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{p.confidence ?? 0}%</span>
+        </div>
+        {renderConfidenceBar(p.confidence ?? 0)}
+
+        {p.reasoning && (
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 10, lineHeight: 1.5 }}>
+            {p.reasoning}
+          </p>
+        )}
+
+        {props.length > 0 && (
+          <div style={{ marginTop: 10, borderTop: "1px solid var(--border-color)", paddingTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6 }}>Player Props</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+              {props.slice(0, 4).map((pp, j) => (
+                <div key={j} style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>
+                  <span style={{ color: "var(--text-secondary)" }}>{pp.name}: </span>
+                  <span style={{ fontWeight: 600 }}>
+                    {pp.pts != null ? `${pp.pts}p` : ""} {pp.reb != null ? `${pp.reb}r` : ""} {pp.ast != null ? `${pp.ast}a` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderResultsTab = () => {
+    if (!historyData) return null;
+    const { days } = historyData;
+
+    if (!days || days.length === 0) {
+      return (
+        <div className="card-hover" style={{ padding: 32, textAlign: "center" }}>
+          <Info size={40} style={{ color: "var(--text-muted)", marginBottom: 12 }} />
+          <h3 style={{ margin: "0 0 8px" }}>No Graded Results Yet</h3>
+          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Results appear once games finish and predictions are graded.</p>
+        </div>
+      );
     }
+
+    return (
+      <>
+        {days.map((day) => {
+          const correct = day.results.filter((r) => r.correct === 1).length;
+          const total = day.results.length;
+          const pct = total > 0 ? ((correct / total) * 100).toFixed(1) : 0;
+          return (
+            <div key={day.date} style={{ marginBottom: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>
+                  {new Date(day.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                </h3>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontWeight: 600,
+                    color: pct >= 60 ? "#22c55e" : pct >= 40 ? "#f97316" : "#ef4444",
+                  }}
+                >
+                  {correct}/{total} correct ({pct}%)
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+                {day.results.map((r, i) => (
+                  <div
+                    key={i}
+                    className="card-hover"
+                    style={{
+                      padding: 16,
+                      borderLeft: `3px solid ${r.correct === 1 ? "#22c55e" : "#ef4444"}`,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <TeamLogo abbr={r.away_team} size={24} />
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{r.away_team}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>@</span>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{r.home_team}</span>
+                        <TeamLogo abbr={r.home_team} size={24} />
+                      </div>
+                      <span style={{ fontSize: 16 }}>{r.correct === 1 ? "✓" : "✗"}</span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
+                      <div>
+                        <div style={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}>Predicted</div>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                          {r.predicted_winner} · {r.away_score_pred}-{r.home_score_pred}
+                        </span>
+                      </div>
+                      <div>
+                        <div style={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}>Actual</div>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                          {r.actual_winner || "?"} · {r.away_score_actual ?? "?"}-{r.home_score_actual ?? "?"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {r.spread_error != null && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, fontFamily: "'JetBrains Mono', monospace" }}>
+                        Spread error: {Math.abs(r.spread_error).toFixed(1)} pts
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </>
+    );
+  };
+
+  const renderTrendTab = () => {
+    if (!accuracyData) return null;
+    const { overall, daily } = accuracyData;
+
+    return (
+      <>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16, marginBottom: 24 }}>
+          {[
+            { label: "Total Predictions", value: overall?.total ?? 0 },
+            { label: "Correct", value: overall?.correct ?? 0 },
+            { label: "Win Rate", value: `${(overall?.winPct ?? 0).toFixed(1)}%` },
+            { label: "Avg Spread Error", value: `${(overall?.avgSpreadError ?? 0).toFixed(1)} pts` },
+          ].map((s, i) => (
+            <div key={i} className="card-hover" style={{ padding: 16, textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {daily && daily.length > 0 ? (
+          <div className="card-hover" style={{ padding: 20 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Daily Accuracy (30 days)</h3>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={daily}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: "var(--text-muted)" }}
+                  tickFormatter={(d) => {
+                    const dt = new Date(d + "T12:00:00");
+                    return `${dt.getMonth() + 1}/${dt.getDate()}`;
+                  }}
+                />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "var(--text-muted)" }} tickFormatter={(v) => `${v}%`} />
+                <Tooltip
+                  contentStyle={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, fontSize: 12 }}
+                  formatter={(v) => [`${v.toFixed(1)}%`, "Accuracy"]}
+                  labelFormatter={(d) => new Date(d + "T12:00:00").toLocaleDateString()}
+                />
+                <Line type="monotone" dataKey="accuracy" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: "#f97316" }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="card-hover" style={{ padding: 32, textAlign: "center" }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Not enough graded data for a trend chart yet.</p>
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.4)",
-          zIndex: 998,
-        }}
-      />
-      {/* Panel */}
-      <div
-        className="fade-in"
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: 420,
-          maxWidth: "100vw",
-          background: "var(--bg-primary)",
-          borderLeft: "1px solid var(--border-color)",
-          zIndex: 999,
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "-8px 0 40px rgba(0,0,0,0.3)",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--border-color)",
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                background: "linear-gradient(135deg, #e8590c, #d97706)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Sparkles size={16} color="white" />
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>AI Assistant</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                NBA Analytics Expert
-              </div>
-            </div>
-          </div>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
+        <Target size={22} style={{ verticalAlign: "middle", marginRight: 8, color: "var(--accent)" }} />
+        AI Predictions
+      </h1>
+      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
+        Powered by Claude — game picks, spreads, player props & upset alerts
+      </p>
+
+      <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border-color)", paddingBottom: 0 }}>
+        {tabs.map((t) => (
           <button
-            onClick={onClose}
+            key={t.key}
+            onClick={() => setTab(t.key)}
             style={{
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border-color)",
-              borderRadius: 6,
-              width: 28,
-              height: 28,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              padding: "10px 18px",
+              fontSize: 13,
+              fontWeight: tab === t.key ? 600 : 400,
+              color: tab === t.key ? "var(--accent)" : "var(--text-muted)",
+              background: "none",
+              border: "none",
+              borderBottom: tab === t.key ? "2px solid var(--accent)" : "2px solid transparent",
               cursor: "pointer",
-              color: "var(--text-muted)",
+              fontFamily: "'Inter', sans-serif",
+              transition: "all 0.15s ease",
             }}
           >
-            <X size={14} />
+            {t.label}
           </button>
-        </div>
-
-        {/* Messages */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "16px 16px 8px",
-          }}
-        >
-          {messages.map((msg, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: "flex",
-                justifyContent:
-                  msg.role === "user" ? "flex-end" : "flex-start",
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  maxWidth: "85%",
-                  padding: "10px 14px",
-                  borderRadius:
-                    msg.role === "user"
-                      ? "14px 14px 4px 14px"
-                      : "14px 14px 14px 4px",
-                  background:
-                    msg.role === "user"
-                      ? "linear-gradient(135deg, #3b82f6, #8b5cf6)"
-                      : "var(--bg-secondary)",
-                  border:
-                    msg.role === "user"
-                      ? "none"
-                      : "1px solid var(--border-color)",
-                  color:
-                    msg.role === "user" ? "white" : "var(--text-primary)",
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                }}
-              >
-                {msg.content}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-start",
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  padding: "12px 18px",
-                  borderRadius: "14px 14px 14px 4px",
-                  background: "var(--bg-secondary)",
-                  border: "1px solid var(--border-color)",
-                  display: "flex",
-                  gap: 6,
-                  alignItems: "center",
-                }}
-              >
-                <div className="typing-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent-blue)", animation: "pulse 1.2s ease-in-out infinite" }} />
-                <div className="typing-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent-blue)", animation: "pulse 1.2s ease-in-out 0.2s infinite" }} />
-                <div className="typing-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent-blue)", animation: "pulse 1.2s ease-in-out 0.4s infinite" }} />
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div
-          style={{
-            padding: "12px 16px 16px",
-            borderTop: "1px solid var(--border-color)",
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border-color)",
-              borderRadius: 10,
-              padding: "4px 4px 4px 14px",
-              alignItems: "flex-end",
-            }}
-          >
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about players, teams, stats..."
-              rows={1}
-              style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                color: "var(--text-primary)",
-                fontSize: 13,
-                fontFamily: "'Inter', sans-serif",
-                resize: "none",
-                padding: "8px 0",
-                maxHeight: 100,
-                lineHeight: 1.5,
-              }}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || loading}
-              style={{
-                background:
-                  input.trim() && !loading
-                    ? "linear-gradient(135deg, #3b82f6, #8b5cf6)"
-                    : "var(--bg-tertiary)",
-                border: "none",
-                borderRadius: 8,
-                width: 36,
-                height: 36,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: input.trim() && !loading ? "pointer" : "default",
-                flexShrink: 0,
-                transition: "all 0.2s",
-              }}
-            >
-              <ArrowRight
-                size={16}
-                color={input.trim() && !loading ? "white" : "#9e8878"}
-              />
-            </button>
-          </div>
-          <div
-            style={{
-              fontSize: 10,
-              color: "var(--text-muted)",
-              textAlign: "center",
-              marginTop: 8,
-              opacity: 0.6,
-            }}
-          >
-            Powered by Claude · Enter to send · Shift+Enter for new line
-          </div>
-        </div>
+        ))}
       </div>
-    </>
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
+          <div className="loading-spinner" style={{ width: 28, height: 28, border: "3px solid var(--border-color)", borderTopColor: "var(--accent)", borderRadius: "50%", margin: "0 auto 12px", animation: "spin 0.8s linear infinite" }} />
+          Loading predictions...
+        </div>
+      ) : error ? (
+        <div className="card-hover" style={{ padding: 32, textAlign: "center" }}>
+          <Info size={40} style={{ color: "#ef4444", marginBottom: 12 }} />
+          <h3 style={{ margin: "0 0 8px" }}>Could not load predictions</h3>
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>{error}</p>
+        </div>
+      ) : tab === "today" ? (
+        renderTodayTab()
+      ) : tab === "results" ? (
+        renderResultsTab()
+      ) : (
+        renderTrendTab()
+      )}
+    </div>
   );
 }
 
@@ -2625,6 +2664,7 @@ function MobileBottomNav({ currentPage, setCurrentPage }) {
     { key: "teams", label: "Teams", icon: Shield },
     { key: "compare", label: "Compare", icon: Layers },
     { key: "games", label: "Games", icon: Calendar },
+    { key: "predictions", label: "Predict", icon: Target },
   ];
   return (
     <div
@@ -2635,7 +2675,7 @@ function MobileBottomNav({ currentPage, setCurrentPage }) {
         bottom: 0,
         left: 0,
         right: 0,
-        background: "rgba(232, 221, 208, 0.97)",
+        background: "rgba(249, 248, 246, 0.95)",
         borderTop: "1px solid var(--border-color)",
         zIndex: 50,
         justifyContent: "space-around",
@@ -2747,16 +2787,21 @@ function GamesPage({ onGameClick }) {
     setSelectedDayIdx(idx >= 0 ? idx : weekOffset < 0 ? 6 : 0);
   }, [weekOffset]); // eslint-disable-line
 
-  // Fetch all 7 days in parallel whenever the week changes
+  // Fetch all 7 days sequentially to avoid NBA API rate-limiting on batch requests
   useEffect(() => {
     let cancelled = false;
     setWeekLoading(true);
     setWeekGames(null);
     const dateStrs = weekKey.split(",");
-    Promise.all(dateStrs.map((ds) => fetchScoreboard(ds).catch(() => [])))
-      .then((results) => {
-        if (!cancelled) { setWeekGames(results); setWeekLoading(false); }
-      });
+    (async () => {
+      const results = [];
+      for (const ds of dateStrs) {
+        if (cancelled) return;
+        const games = await fetchScoreboard(ds).catch(() => []);
+        results.push(games);
+      }
+      if (!cancelled) { setWeekGames(results); setWeekLoading(false); }
+    })();
     return () => { cancelled = true; };
   }, [weekKey]);
 
@@ -2872,13 +2917,13 @@ function GamesPage({ onGameClick }) {
             <YAxis hide domain={[0, "auto"]} />
             <Tooltip content={<ChartTip />} cursor={{ fill: "rgba(0,0,0,0.04)", radius: 4 }} />
             <Bar dataKey="final" stackId="a" name="Final">
-              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#16a34a" : "rgba(22,163,74,0.35)"} />)}
+              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#22c55e" : "rgba(34,197,94,0.35)"} />)}
             </Bar>
             <Bar dataKey="live" stackId="a" name="Live">
-              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#dc2626" : "rgba(220,38,38,0.35)"} />)}
+              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#ef4444" : "rgba(239,68,68,0.35)"} />)}
             </Bar>
             <Bar dataKey="upcoming" stackId="a" name="Upcoming" radius={[4, 4, 0, 0]}>
-              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#d97706" : "rgba(217,119,6,0.3)"} />)}
+              {chartData.map((_, i) => <Cell key={i} fill={i === selectedDayIdx ? "#f59e0b" : "rgba(245,158,11,0.3)"} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -3551,7 +3596,7 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
               <YAxis axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 10 }} domain={["auto", "auto"]} />
               <Tooltip content={<ChartTooltipContent />} />
               <Line type="monotone" dataKey="pts" stroke="#b8ab9c" strokeWidth={1} dot={{ r: 2, fill: "#b8ab9c" }} name="Points" />
-              <Line type="monotone" dataKey="rollingPts" stroke="#e8590c" strokeWidth={2.5} dot={false} name={`${rollingWindow}G Avg`} />
+              <Line type="monotone" dataKey="rollingPts" stroke="#f97316" strokeWidth={2.5} dot={false} name={`${rollingWindow}G Avg`} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -4507,7 +4552,7 @@ function ComparisonPage() {
               {/* Legend */}
               <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 8, fontSize: 11, color: "var(--text-muted)" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <div style={{ width: 12, height: 12, borderRadius: 3, background: leftItem?.color || "#e8590c" }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: leftItem?.color || "#f97316" }} />
                   {leftItem?.label.split(" ").pop()}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -4520,8 +4565,8 @@ function ComparisonPage() {
                   <PolarGrid stroke="rgba(255,255,255,0.1)" />
                   <PolarAngleAxis dataKey="stat" tick={{ fill: "#9e8878", fontSize: 11 }} />
                   <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                  <Radar name={leftItem?.label || "Left"} dataKey="left" stroke={leftItem?.color || "#e8590c"} fill={leftItem?.color || "#e8590c"} fillOpacity={0.2} strokeWidth={2} />
-                  <Radar name={rightItem?.label || "Right"} dataKey="right" stroke={rightItem?.color || "#dc2626"} fill={rightItem?.color || "#dc2626"} fillOpacity={0.2} strokeWidth={2} />
+                  <Radar name={leftItem?.label || "Left"} dataKey="left" stroke={leftItem?.color || "#f97316"} fill={leftItem?.color || "#f97316"} fillOpacity={0.2} strokeWidth={2} />
+                  <Radar name={rightItem?.label || "Right"} dataKey="right" stroke={rightItem?.color || "#ef4444"} fill={rightItem?.color || "#ef4444"} fillOpacity={0.2} strokeWidth={2} />
                   <Tooltip content={<ChartTooltipContent />} />
                 </RadarChart>
               </ResponsiveContainer>
@@ -5126,7 +5171,7 @@ function GameDetailPage({ gameId, onBack, fallbackGame = null }) {
     setBoxScoreLoading(true);
     // Always bust the in-memory + localStorage cache so we never show stale
     // empty-player data that was cached while the game was still live.
-    clearEndpointCache("boxscoretraditionalv2");
+    clearEndpointCache("boxscoretraditionalv3");
     fetchBoxScore(gameId, game.homeTeam, game.awayTeam)
       .then((data) => { if (!cancelled && data) setLiveBoxScore(data); })
       .catch(() => {})
@@ -6522,7 +6567,7 @@ class ErrorBoundary extends React.Component {
         <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#e8ddd0", color: "#1c1309", fontFamily: "'Inter', sans-serif", padding: 32 }}>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 12 }}>Something went wrong</h1>
           <p style={{ color: "#9e8878", marginBottom: 20, maxWidth: 500, textAlign: "center" }}>{this.state.error?.message || "An unexpected error occurred."}</p>
-          <button onClick={() => this.setState({ hasError: false, error: null })} style={{ background: "#e8590c", color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
+          <button onClick={() => this.setState({ hasError: false, error: null })} style={{ background: "#f97316", color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
             Try Again
           </button>
         </div>
@@ -6549,7 +6594,6 @@ export default function CourtsideApp() {
 function CourtsideAppInner() {
   const liveData = useLiveData();
   const [currentPage, setCurrentPage] = useState("home");
-  const [showAIModal, setShowAIModal] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState(null);
   const [selectedGame, setSelectedGame] = useState(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
@@ -6635,6 +6679,8 @@ function CourtsideAppInner() {
             }}
           />
         );
+      case "predictions":
+        return <PredictionsPage />;
       case "gameDetail":
         return (
           <GameDetailPage
@@ -6669,14 +6715,12 @@ function CourtsideAppInner() {
         <NavBar
           currentPage={currentPage}
           setCurrentPage={setCurrentPage}
-          onAskAI={() => setShowAIModal(true)}
           onPlayerSelect={(id) => { setSelectedPlayerId(id); setCurrentPage("playerDetail"); }}
           onTeamSelect={(abbr) => { setSelectedTeamAbbr(abbr); setCurrentPage("teamDetail"); }}
         />
         <main key={currentPage + (selectedPlayerId || "") + (selectedTeamAbbr || "") + (selectedGameId || "")} className="page-transition" style={{ flex: 1 }}>{renderPage()}</main>
         <Footer />
         <MobileBottomNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
-        {showAIModal && <AIChatPanel onClose={() => setShowAIModal(false)} />}
       </div>
     </>
   );

@@ -3,3 +3,5 @@ dist/
 .data/
 *.db
 plan.md
+.env
+.claude/settings.local.json
