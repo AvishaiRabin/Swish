@@ -4,4 +4,4 @@ dist/
 *.db
 plan.md
 .env
-.claude/settings.local.json
+.claude/
