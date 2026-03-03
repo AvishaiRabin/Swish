@@ -1,9 +1,12 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, ".data");
@@ -82,6 +85,46 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS meta (
     key         TEXT PRIMARY KEY,
     updated_at  INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS predictions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_date TEXT NOT NULL,
+    game_id         TEXT,
+    home_team       TEXT NOT NULL,
+    away_team       TEXT NOT NULL,
+    predicted_winner TEXT NOT NULL,
+    predicted_spread REAL,
+    confidence      REAL,
+    home_score_pred INTEGER,
+    away_score_pred INTEGER,
+    upset_alert     INTEGER DEFAULT 0,
+    reasoning       TEXT,
+    player_props    TEXT,
+    raw_response    TEXT,
+    created_at      INTEGER NOT NULL,
+    UNIQUE(prediction_date, home_team, away_team)
+  );
+
+  CREATE TABLE IF NOT EXISTS prediction_results (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_date TEXT NOT NULL,
+    game_id         TEXT,
+    home_team       TEXT NOT NULL,
+    away_team       TEXT NOT NULL,
+    predicted_winner TEXT NOT NULL,
+    actual_winner   TEXT,
+    predicted_spread REAL,
+    actual_spread   REAL,
+    home_score_pred INTEGER,
+    away_score_pred INTEGER,
+    home_score_actual INTEGER,
+    away_score_actual INTEGER,
+    correct         INTEGER,
+    spread_error    REAL,
+    player_props    TEXT,
+    graded_at       INTEGER,
+    UNIQUE(prediction_date, home_team, away_team)
   );
 `);
 
@@ -357,6 +400,299 @@ async function refreshAll(force = false) {
 }
 
 // ---------------------------------------------------------------------------
+// AI Predictions — Claude-powered daily game predictions
+// ---------------------------------------------------------------------------
+
+function todayDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+async function callAnthropicWithRetry(systemPrompt, userPrompt, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+        }),
+      });
+
+      if (response.status === 429 || response.status === 529) {
+        const backoff = Math.pow(2, attempt) * 5000 + Math.random() * 2000;
+        console.warn(`[Predictions] Rate limited (${response.status}), retrying in ${Math.round(backoff / 1000)}s...`);
+        await new Promise((r) => setTimeout(r, backoff));
+        continue;
+      }
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Anthropic API ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.content?.[0]?.text || "";
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      const backoff = Math.pow(2, attempt) * 3000;
+      console.warn(`[Predictions] Attempt ${attempt + 1} failed: ${err.message}, retrying in ${Math.round(backoff / 1000)}s...`);
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+  }
+}
+
+async function gatherPredictionContext() {
+  const dateStr = todayDateStr();
+
+  const scoreboardData = await fetchNBAEndpoint("scoreboardv3", {
+    LeagueID: "00",
+    GameDate: dateStr,
+  });
+  const games = scoreboardData.scoreboard?.games || [];
+  const upcomingGames = games.filter((g) => g.gameStatus === 1);
+  if (upcomingGames.length === 0) return { games: [], dateStr, context: "" };
+
+  // Pull from local DB
+  const standings = db.prepare("SELECT * FROM standings ORDER BY pct DESC").all();
+  const topPlayers = db.prepare("SELECT * FROM players ORDER BY ppg DESC LIMIT 100").all();
+
+  // Collect team abbreviations for today's games
+  const teamAbbrs = new Set();
+  for (const g of upcomingGames) {
+    const home = TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode;
+    const away = TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode;
+    if (home) teamAbbrs.add(home);
+    if (away) teamAbbrs.add(away);
+  }
+
+  // Fetch last 5 game logs per team
+  const gameLogs = {};
+  for (const abbr of teamAbbrs) {
+    const tid = Object.entries(TEAM_ID_ABBR).find(([, a]) => a === abbr)?.[0];
+    if (!tid) continue;
+    try {
+      const data = await fetchNBAEndpoint("teamgamelog", {
+        TeamID: tid, Season: SEASON, SeasonType: "Regular Season",
+      });
+      gameLogs[abbr] = parseResultSet(data, 0).slice(0, 5).map((r) => ({
+        date: r.GAME_DATE, matchup: r.MATCHUP, wl: r.WL,
+        pts: r.PTS, fgPct: r.FG_PCT, fg3Pct: r.FG3_PCT,
+        reb: r.REB, ast: r.AST, tov: r.TOV,
+      }));
+    } catch { /* skip if unavailable */ }
+  }
+
+  // Historical accuracy
+  const last30 = db.prepare(`
+    SELECT COUNT(*) as total,
+           SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
+    FROM prediction_results
+    WHERE graded_at IS NOT NULL
+      AND prediction_date >= date('now', '-30 days')
+  `).get();
+
+  // Build context
+  const standingsText = standings.map((s) =>
+    `${s.team}: ${s.wins}-${s.losses} (.${Math.round(s.pct * 1000)}) PPG:${s.ppg} OPP:${s.opp_ppg} DIFF:${s.diff} Home:${s.home_rec} Away:${s.away_rec} L10:${s.last10} Streak:${s.streak}`
+  ).join("\n");
+
+  const gamesText = upcomingGames.map((g) => {
+    const home = TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode;
+    const away = TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode;
+    const homeLog = (gameLogs[home] || []).map((l) => `  ${l.date} ${l.matchup} ${l.wl} ${l.pts}pts`).join("\n");
+    const awayLog = (gameLogs[away] || []).map((l) => `  ${l.date} ${l.matchup} ${l.wl} ${l.pts}pts`).join("\n");
+    return `${away} @ ${home} (GameID: ${g.gameId})\nHome (${home}) last 5:\n${homeLog}\nAway (${away}) last 5:\n${awayLog}`;
+  }).join("\n\n");
+
+  const relevantPlayers = topPlayers.filter((p) => teamAbbrs.has(p.team));
+  const playersText = relevantPlayers.slice(0, 40).map((p) =>
+    `${p.name} (${p.team}, ${p.pos}): ${p.ppg}ppg ${p.rpg}rpg ${p.apg}apg FG:${(p.fg_pct * 100).toFixed(1)}% 3P:${(p.tp_pct * 100).toFixed(1)}%`
+  ).join("\n");
+
+  const accuracyText = last30.total > 0
+    ? `Your historical accuracy (last 30 days): ${last30.wins}/${last30.total} (${((last30.wins / last30.total) * 100).toFixed(1)}%). Adjust your approach based on past errors.`
+    : "No historical predictions to reference yet.";
+
+  return {
+    games: upcomingGames,
+    dateStr,
+    context: `${accuracyText}\n\n--- STANDINGS ---\n${standingsText}\n\n--- TODAY'S GAMES ---\n${gamesText}\n\n--- KEY PLAYERS ---\n${playersText}`,
+  };
+}
+
+async function generatePredictions() {
+  if (!ANTHROPIC_API_KEY) {
+    console.warn("[Predictions] No ANTHROPIC_API_KEY set, skipping");
+    return;
+  }
+
+  const { games, dateStr, context } = await gatherPredictionContext();
+  if (games.length === 0) {
+    console.log("[Predictions] No upcoming games today, skipping");
+    return;
+  }
+
+  const existing = db.prepare("SELECT COUNT(*) as c FROM predictions WHERE prediction_date = ?").get(dateStr);
+  if (existing.c > 0) {
+    console.log(`[Predictions] Already have ${existing.c} predictions for ${dateStr}`);
+    return;
+  }
+
+  const systemPrompt = `You are an expert NBA analytics engine. Analyze the provided data — standings, recent form, player stats — and predict game outcomes. Be analytical and data-driven. Respond with ONLY valid JSON, no markdown fencing or extra text.`;
+
+  const userPrompt = `${context}
+
+Predict each game for ${dateStr}. Return JSON:
+{
+  "predictions": [
+    {
+      "game_id": "0022500xxx",
+      "home_team": "BOS",
+      "away_team": "LAL",
+      "predicted_winner": "BOS",
+      "home_score": 112,
+      "away_score": 104,
+      "spread": 8.0,
+      "confidence": 0.75,
+      "upset_alert": false,
+      "reasoning": "1-2 sentences max",
+      "player_props": [
+        { "playerName": "Jayson Tatum", "team": "BOS", "pts": 28, "reb": 8, "ast": 5 },
+        { "playerName": "LeBron James", "team": "LAL", "pts": 25, "reb": 7, "ast": 8 }
+      ]
+    }
+  ]
+}
+
+Rules:
+- "spread" = absolute margin of victory (always positive)
+- "confidence" = 0.5 to 1.0
+- "upset_alert" = true when the worse-record team is predicted to win OR confidence < 0.55
+- Include 2-4 player props per game (best players from each team)
+- "reasoning" = 1-2 sentences, cite specific stats`;
+
+  console.log(`[Predictions] Generating for ${dateStr} (${games.length} games)...`);
+
+  const rawResponse = await callAnthropicWithRetry(systemPrompt, userPrompt);
+
+  let parsed;
+  try {
+    const cleaned = rawResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    parsed = JSON.parse(cleaned);
+  } catch (e) {
+    console.error("[Predictions] Failed to parse response:", e.message);
+    return;
+  }
+
+  const ins = db.prepare(`
+    INSERT OR REPLACE INTO predictions
+    (prediction_date, game_id, home_team, away_team, predicted_winner, predicted_spread,
+     confidence, home_score_pred, away_score_pred, upset_alert, reasoning, player_props,
+     raw_response, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `);
+
+  db.transaction(() => {
+    for (const p of parsed.predictions || []) {
+      ins.run(
+        dateStr, p.game_id || null, p.home_team, p.away_team,
+        p.predicted_winner, p.spread || null, p.confidence || 0.5,
+        p.home_score || null, p.away_score || null,
+        p.upset_alert ? 1 : 0, p.reasoning || "",
+        JSON.stringify(p.player_props || []), rawResponse, Date.now()
+      );
+    }
+    db.prepare("INSERT OR REPLACE INTO meta VALUES ('predictions', ?)").run(Date.now());
+  })();
+
+  console.log(`[Predictions] Saved ${(parsed.predictions || []).length} predictions for ${dateStr}`);
+}
+
+async function gradePredictions() {
+  const ungraded = db.prepare(`
+    SELECT DISTINCT prediction_date FROM predictions
+    WHERE prediction_date < date('now')
+      AND prediction_date NOT IN (
+        SELECT DISTINCT prediction_date FROM prediction_results WHERE graded_at IS NOT NULL
+      )
+    ORDER BY prediction_date DESC LIMIT 7
+  `).all();
+
+  if (ungraded.length === 0) return;
+
+  for (const { prediction_date: dateStr } of ungraded) {
+    const preds = db.prepare("SELECT * FROM predictions WHERE prediction_date = ?").all(dateStr);
+
+    const scoreboardData = await fetchNBAEndpoint("scoreboardv3", {
+      LeagueID: "00", GameDate: dateStr,
+    });
+    const games = scoreboardData.scoreboard?.games || [];
+
+    const allFinal = games.length > 0 && games.every((g) => g.gameStatus === 3);
+    if (!allFinal) {
+      console.log(`[Grading] ${dateStr}: not all games final yet`);
+      continue;
+    }
+
+    const resultMap = {};
+    for (const g of games) {
+      const home = TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode;
+      const away = TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode;
+      const hs = g.homeTeam?.score ?? 0;
+      const as = g.awayTeam?.score ?? 0;
+      resultMap[`${home}_${away}`] = {
+        homeScore: hs, awayScore: as,
+        winner: hs > as ? home : away,
+        spread: Math.abs(hs - as),
+      };
+    }
+
+    const ins = db.prepare(`
+      INSERT OR REPLACE INTO prediction_results
+      (prediction_date, game_id, home_team, away_team, predicted_winner, actual_winner,
+       predicted_spread, actual_spread, home_score_pred, away_score_pred,
+       home_score_actual, away_score_actual, correct, spread_error, player_props, graded_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `);
+
+    let graded = 0;
+    db.transaction(() => {
+      for (const p of preds) {
+        const result = resultMap[`${p.home_team}_${p.away_team}`];
+        if (!result) continue;
+        ins.run(
+          p.prediction_date, p.game_id, p.home_team, p.away_team,
+          p.predicted_winner, result.winner,
+          p.predicted_spread, result.spread,
+          p.home_score_pred, p.away_score_pred,
+          result.homeScore, result.awayScore,
+          p.predicted_winner === result.winner ? 1 : 0,
+          Math.abs((p.predicted_spread || 0) - result.spread),
+          p.player_props, Date.now()
+        );
+        graded++;
+      }
+      db.prepare("INSERT OR REPLACE INTO meta VALUES ('prediction_grading', ?)").run(Date.now());
+    })();
+
+    console.log(`[Grading] ${dateStr}: graded ${graded} predictions`);
+  }
+}
+
+async function runPredictionJobs() {
+  try { await generatePredictions(); } catch (e) { console.error("[Predictions] Error:", e.message); }
+  try { await gradePredictions(); } catch (e) { console.error("[Grading] Error:", e.message); }
+}
+
+// ---------------------------------------------------------------------------
 // Express app
 // ---------------------------------------------------------------------------
 const app = express();
@@ -481,6 +817,111 @@ app.post("/api/db/refresh", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Predictions API
+// ---------------------------------------------------------------------------
+
+app.get("/api/predictions/today", (_req, res) => {
+  const dateStr = todayDateStr();
+  let rows = db.prepare(
+    "SELECT * FROM predictions WHERE prediction_date = ? ORDER BY confidence DESC"
+  ).all(dateStr);
+
+  // Fall back to most recent available predictions
+  if (rows.length === 0) {
+    rows = db.prepare(
+      "SELECT * FROM predictions WHERE prediction_date = (SELECT MAX(prediction_date) FROM predictions) ORDER BY confidence DESC"
+    ).all();
+  }
+
+  const metaRow = db.prepare("SELECT updated_at FROM meta WHERE key = 'predictions'").get();
+
+  res.json({
+    date: rows[0]?.prediction_date || dateStr,
+    generatedAt: metaRow?.updated_at || null,
+    predictions: rows.map((r) => ({
+      gameId:          r.game_id,
+      homeTeam:        r.home_team,
+      awayTeam:        r.away_team,
+      predictedWinner: r.predicted_winner,
+      spread:          r.predicted_spread,
+      confidence:      r.confidence,
+      homeScorePred:   r.home_score_pred,
+      awayScorePred:   r.away_score_pred,
+      upsetAlert:      !!r.upset_alert,
+      reasoning:       r.reasoning,
+      playerProps:     JSON.parse(r.player_props || "[]"),
+    })),
+  });
+});
+
+app.get("/api/predictions/history", (req, res) => {
+  const limit = parseInt(req.query.days) || 7;
+  const rows = db.prepare(`
+    SELECT * FROM prediction_results
+    WHERE graded_at IS NOT NULL
+    ORDER BY prediction_date DESC, home_team
+    LIMIT ?
+  `).all(limit * 15);
+
+  const grouped = {};
+  for (const r of rows) {
+    if (!grouped[r.prediction_date]) grouped[r.prediction_date] = [];
+    grouped[r.prediction_date].push({
+      gameId:          r.game_id,
+      homeTeam:        r.home_team,
+      awayTeam:        r.away_team,
+      predictedWinner: r.predicted_winner,
+      actualWinner:    r.actual_winner,
+      predictedSpread: r.predicted_spread,
+      actualSpread:    r.actual_spread,
+      homeScorePred:   r.home_score_pred,
+      awayScorePred:   r.away_score_pred,
+      homeScoreActual: r.home_score_actual,
+      awayScoreActual: r.away_score_actual,
+      correct:         !!r.correct,
+      spreadError:     r.spread_error,
+      playerProps:     JSON.parse(r.player_props || "[]"),
+    });
+  }
+  res.json(grouped);
+});
+
+app.get("/api/predictions/accuracy", (_req, res) => {
+  const overall = db.prepare(`
+    SELECT COUNT(*) as total,
+           SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct,
+           AVG(spread_error) as avgSpreadError
+    FROM prediction_results WHERE graded_at IS NOT NULL
+  `).get();
+
+  const daily = db.prepare(`
+    SELECT prediction_date as date,
+           COUNT(*) as total,
+           SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct
+    FROM prediction_results
+    WHERE graded_at IS NOT NULL
+    GROUP BY prediction_date
+    ORDER BY prediction_date DESC
+    LIMIT 30
+  `).all();
+
+  res.json({
+    overall: {
+      total:          overall.total,
+      correct:        overall.correct || 0,
+      pct:            overall.total > 0 ? +((overall.correct / overall.total) * 100).toFixed(1) : 0,
+      avgSpreadError: overall.avgSpreadError != null ? +overall.avgSpreadError.toFixed(1) : null,
+    },
+    daily: daily.map((d) => ({
+      date:    d.date,
+      total:   d.total,
+      correct: d.correct,
+      pct:     +((d.correct / d.total) * 100).toFixed(1),
+    })),
+  });
+});
+
+// ---------------------------------------------------------------------------
 // File-cache proxy for real-time endpoints (scoreboard, boxscore, gamelogs)
 // ---------------------------------------------------------------------------
 const FILE_CACHE_TTL = {
@@ -523,7 +964,15 @@ function writeFileCache(key, endpoint, data) {
 app.get("/api/nba/:endpoint", async (req, res) => {
   const { endpoint } = req.params;
   const cacheKey = buildCacheKey(endpoint, req.query);
-  const ttl = FILE_CACHE_TTL[endpoint] || DEFAULT_FILE_TTL;
+  // Past-date scoreboards are immutable — cache for 7 days instead of 5 minutes
+  let ttl = FILE_CACHE_TTL[endpoint] || DEFAULT_FILE_TTL;
+  if (endpoint === "scoreboardv3" && req.query.GameDate) {
+    const today = new Date();
+    const reqDate = new Date(req.query.GameDate);
+    if (reqDate < today && reqDate.toDateString() !== today.toDateString()) {
+      ttl = 7 * 24 * 60 * 60 * 1000; // 7 days
+    }
+  }
 
   const cached = readFileCache(cacheKey);
   if (cached) {
@@ -567,6 +1016,12 @@ app.listen(PORT, () => {
   refreshAll().catch((e) => console.error("[DB] Initial refresh error:", e.message));
   setInterval(
     () => refreshAll().catch((e) => console.error("[DB] Scheduled refresh:", e.message)),
+    6 * 60 * 60 * 1000
+  );
+  // Predictions: run 30s after startup (let DB populate first), then every 6 hours
+  setTimeout(() => runPredictionJobs(), 30000);
+  setInterval(
+    () => runPredictionJobs().catch((e) => console.error("[PredictionJobs]", e.message)),
     6 * 60 * 60 * 1000
   );
 });

@@ -322,100 +322,86 @@ export async function fetchScoreboard(date = null) {
 // homeTeamAbbr / awayTeamAbbr are passed from the scoreboard so we can
 // correctly label which resultSet rows belong to home vs away.
 export async function fetchBoxScore(gameId, homeTeamAbbr, awayTeamAbbr) {
-  const data = await fetchNba("boxscoretraditionalv2", {
+  // v3 endpoint — v2 returns empty rowSets for completed games
+  const data = await fetchNba("boxscoretraditionalv3", {
     GameID: gameId,
-    RangeType: 0,
-    Season: SEASON,
-    SeasonType: "Regular Season",
-    StartPeriod: 1,
-    EndPeriod: 10,
-    StartRange: 0,
-    EndRange: 0,
   });
 
-  // v2 uses resultSets format: [PlayerStats, TeamStats, ...]
-  const playerRows = parseResultSet(data, 0); // PlayerStats
-  const teamRows   = parseResultSet(data, 1); // TeamStats
+  const box = data.boxScoreTraditional;
+  if (!box) return null;
 
-  // Only include players who actually played (MIN is non-null/non-empty)
-  const activePlayers = playerRows.filter((p) => p.MIN != null && p.MIN !== "");
-  if (!activePlayers.length) return null;
+  function parseTeam(teamObj) {
+    const tricode = normalizeAbbr(teamObj.teamTricode);
+    // Filter out DNP players (comment has the reason, e.g. "DNP - Coach's Decision")
+    // First 5 players with no comment are starters
+    let starterCount = 0;
+    const players = (teamObj.players || [])
+      .filter((p) => p.statistics && !p.comment)
+      .map((p) => {
+        const s = p.statistics;
+        const pm = s.plusMinusPoints ?? 0;
+        const isStarter = starterCount < 5;
+        starterCount++;
+        return {
+          name: `${p.firstName} ${p.familyName}`,
+          pos: p.position || "",
+          min: s.minutes || "0:00",    // v3 already returns "MM:SS"
+          pts: s.points ?? 0,
+          reb: s.reboundsTotal ?? 0,
+          ast: s.assists ?? 0,
+          stl: s.steals ?? 0,
+          blk: s.blocks ?? 0,
+          fgm: s.fieldGoalsMade ?? 0,
+          fga: s.fieldGoalsAttempted ?? 0,
+          tpm: s.threePointersMade ?? 0,
+          tpa: s.threePointersAttempted ?? 0,
+          ftm: s.freeThrowsMade ?? 0,
+          fta: s.freeThrowsAttempted ?? 0,
+          to: s.turnovers ?? 0,
+          pf: s.foulsPersonal ?? 0,
+          plusMinus: pm >= 0 ? `+${pm}` : String(pm),
+          starter: isStarter,
+        };
+      });
 
-  // MIN in v2 is "MM:SS" or "MM:SS.S" — strip decimals
-  function parseMins(m) {
-    if (!m) return "0:00";
-    return String(m).split(".")[0];
-  }
-
-  // Group players by team abbreviation
-  const byTeam = {};
-  activePlayers.forEach((p) => {
-    const abbr = normalizeAbbr(p.TEAM_ABBREVIATION);
-    if (!byTeam[abbr]) byTeam[abbr] = [];
-    const pm = p.PLUS_MINUS ?? 0;
-    byTeam[abbr].push({
-      name: p.PLAYER_NAME || "",
-      pos: p.START_POSITION || "",
-      min: parseMins(p.MIN),
-      pts: p.PTS ?? 0,
-      reb: p.REB ?? 0,
-      ast: p.AST ?? 0,
-      stl: p.STL ?? 0,
-      blk: p.BLK ?? 0,
-      fgm: p.FGM ?? 0,
-      fga: p.FGA ?? 0,
-      tpm: p.FG3M ?? 0,
-      tpa: p.FG3A ?? 0,
-      ftm: p.FTM ?? 0,
-      fta: p.FTA ?? 0,
-      to: p.TO ?? 0,
-      pf: p.PF ?? 0,
-      plusMinus: pm >= 0 ? `+${pm}` : String(pm),
-      starter: p.START_POSITION != null && p.START_POSITION !== "",
-    });
-  });
-
-  // Sort each team: starters first
-  for (const abbr of Object.keys(byTeam)) {
-    byTeam[abbr].sort((a, b) => (b.starter ? 1 : 0) - (a.starter ? 1 : 0));
-  }
-
-  // Build team stats from TeamStats resultSet
-  const teamStatsByAbbr = {};
-  teamRows.forEach((t) => {
-    const abbr = normalizeAbbr(t.TEAM_ABBREVIATION);
-    const players = byTeam[abbr] || [];
+    const teamStats = teamObj.statistics || {};
     const benchPts = players.filter((p) => !p.starter).reduce((s, p) => s + p.pts, 0);
-    teamStatsByAbbr[abbr] = {
-      fgPct:  +((t.FG_PCT  || 0) * 100).toFixed(1),
-      threePct: +((t.FG3_PCT || 0) * 100).toFixed(1),
-      ftPct:  +((t.FT_PCT  || 0) * 100).toFixed(1),
-      rebounds:  t.REB ?? 0,
-      assists:   t.AST ?? 0,
-      turnovers: t.TO  ?? 0,
-      steals:    t.STL ?? 0,
-      blocks:    t.BLK ?? 0,
-      pointsInPaint: 0, // not in v2
-      fastBreakPts:  0, // not in v2
-      benchPts,
-    };
-  });
 
-  // Use scoreboard-provided home/away tricodes as canonical keys.
-  // Fall back to the order teams appear in the resultSet (away listed first in v2).
-  const teamAbbrs = [...new Set(activePlayers.map((p) => normalizeAbbr(p.TEAM_ABBREVIATION)))];
-  const homeTricode = (homeTeamAbbr && byTeam[normalizeAbbr(homeTeamAbbr)])
-    ? normalizeAbbr(homeTeamAbbr)
-    : (teamAbbrs[1] || "HOME");
-  const awayTricode = (awayTeamAbbr && byTeam[normalizeAbbr(awayTeamAbbr)])
-    ? normalizeAbbr(awayTeamAbbr)
-    : (teamAbbrs[0] || "AWAY");
+    return {
+      tricode,
+      players,
+      stats: {
+        fgPct:  +((teamStats.fieldGoalsPercentage ?? 0) * 100).toFixed(1),
+        threePct: +((teamStats.threePointersPercentage ?? 0) * 100).toFixed(1),
+        ftPct:  +((teamStats.freeThrowsPercentage ?? 0) * 100).toFixed(1),
+        rebounds:  teamStats.reboundsTotal ?? 0,
+        assists:   teamStats.assists ?? 0,
+        turnovers: teamStats.turnovers ?? 0,
+        steals:    teamStats.steals ?? 0,
+        blocks:    teamStats.blocks ?? 0,
+        pointsInPaint: teamStats.pointsInThePaint ?? 0,
+        fastBreakPts:  teamStats.pointsFastBreak ?? 0,
+        benchPts,
+      },
+    };
+  }
+
+  const home = parseTeam(box.homeTeam);
+  const away = parseTeam(box.awayTeam);
+
+  if (!home.players.length && !away.players.length) return null;
 
   return {
-    homeTricode,
-    awayTricode,
-    teamStats: teamStatsByAbbr,
-    boxScore: byTeam,
+    homeTricode: homeTeamAbbr ? normalizeAbbr(homeTeamAbbr) : home.tricode,
+    awayTricode: awayTeamAbbr ? normalizeAbbr(awayTeamAbbr) : away.tricode,
+    teamStats: {
+      [home.tricode]: home.stats,
+      [away.tricode]: away.stats,
+    },
+    boxScore: {
+      [home.tricode]: home.players,
+      [away.tricode]: away.players,
+    },
   };
 }
 
@@ -479,4 +465,25 @@ export function clearCache() {
     if (key.startsWith(LS_PREFIX)) toRemove.push(key);
   }
   toRemove.forEach(k => localStorage.removeItem(k));
+}
+
+// ============================================================================
+// PREDICTIONS — served from SQLite via /api/predictions/*
+// ============================================================================
+export async function fetchPredictionsToday() {
+  const res = await fetch("/api/predictions/today");
+  if (!res.ok) throw new Error(`Predictions today ${res.status}`);
+  return res.json();
+}
+
+export async function fetchPredictionHistory(days = 7) {
+  const res = await fetch(`/api/predictions/history?days=${days}`);
+  if (!res.ok) throw new Error(`Prediction history ${res.status}`);
+  return res.json();
+}
+
+export async function fetchPredictionAccuracy() {
+  const res = await fetch("/api/predictions/accuracy");
+  if (!res.ok) throw new Error(`Prediction accuracy ${res.status}`);
+  return res.json();
 }
