@@ -4,6 +4,7 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { spawn } from "child_process";
 import Database from "better-sqlite3";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
@@ -87,6 +88,74 @@ db.exec(`
     updated_at  INTEGER
   );
 
+  CREATE TABLE IF NOT EXISTS player_profiles (
+    player_id         INTEGER PRIMARY KEY,
+    name              TEXT,
+    team              TEXT,
+    -- Advanced metrics
+    usg_pct           REAL,
+    ts_pct            REAL,
+    ast_pct           REAL,
+    ast_to            REAL,
+    oreb_pct          REAL,
+    dreb_pct          REAL,
+    net_rating        REAL,
+    pie               REAL,
+    pace              REAL,
+    -- Touch / possession breakdown
+    touches           REAL,
+    time_of_poss      REAL,
+    front_ct_touches  REAL,
+    elbow_touches     REAL,
+    post_touches      REAL,
+    paint_touches     REAL,
+    -- Passing / creation
+    passes_made       REAL,
+    potential_ast     REAL,
+    ast_pts_created   REAL,
+    -- Drives
+    drives            REAL,
+    drive_pts         REAL,
+    drive_fg_pct      REAL,
+    drive_ast         REAL,
+    -- Hustle / defense
+    contested_shots   REAL,
+    deflections       REAL,
+    screen_assists    REAL,
+    charges_drawn     REAL,
+    -- Recent form (last 15 games)
+    l15_ppg           REAL,
+    l15_usg_pct       REAL,
+    l15_ts_pct        REAL,
+    form_factor       REAL,
+    updated_at        INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS player_game_logs (
+    player_id    INTEGER NOT NULL,
+    player_name  TEXT,
+    team         TEXT,
+    season       TEXT NOT NULL,
+    game_date    TEXT NOT NULL,
+    opponent     TEXT,
+    home         INTEGER,
+    min_played   REAL,
+    pts          INTEGER,
+    reb          INTEGER,
+    ast          INTEGER,
+    stl          INTEGER,
+    blk          INTEGER,
+    fgm          INTEGER,
+    fga          INTEGER,
+    fg3m         INTEGER,
+    fg3a         INTEGER,
+    ftm          INTEGER,
+    fta          INTEGER,
+    tov          INTEGER,
+    plus_minus   REAL,
+    PRIMARY KEY (player_id, season, game_date)
+  );
+
   CREATE TABLE IF NOT EXISTS predictions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     prediction_date TEXT NOT NULL,
@@ -127,6 +196,14 @@ db.exec(`
     UNIQUE(prediction_date, home_team, away_team)
   );
 `);
+
+// Migrate existing player_profiles tables that predate the L15 columns
+for (const col of ["l15_ppg", "l15_usg_pct", "l15_ts_pct", "form_factor"]) {
+  try { db.exec(`ALTER TABLE player_profiles ADD COLUMN ${col} REAL`); } catch {}
+}
+// Archetype columns written by ml/cluster_players.py
+try { db.exec("ALTER TABLE player_profiles ADD COLUMN archetype INTEGER"); } catch {}
+try { db.exec("ALTER TABLE player_profiles ADD COLUMN archetype_label TEXT"); } catch {}
 
 // ---------------------------------------------------------------------------
 // NBA API helpers
@@ -188,6 +265,14 @@ const TEAM_ID_ABBR = {
 function teamAbbr(abbr, teamId) {
   if (abbr) return normalizeAbbr(abbr);
   return TEAM_ID_ABBR[teamId] || "???";
+}
+
+// Convert NBA date strings ("OCT 22, 2025" or any parseable) to "YYYY-MM-DD"
+function toISODate(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return String(raw);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function isStale(key, ttlMs = 12 * 60 * 60 * 1000) {
@@ -390,6 +475,139 @@ async function refreshLineups() {
   console.log("[DB] Lineups refresh complete");
 }
 
+async function refreshPlayerProfiles() {
+  console.log("[DB] Refreshing player profiles...");
+
+  // Params builder for leaguedashplayerstats (any MeasureType, any LastNGames)
+  const advParams = (LastNGames = 0, MeasureType = "Advanced") => ({
+    Conference: "", DateFrom: "", DateTo: "", Division: "",
+    GameScope: "", GameSegment: "", Height: "", LastNGames,
+    LeagueID: "00", Location: "", MeasureType, Month: 0,
+    OpponentTeamID: 0, Outcome: "", PORound: 0, PaceAdjust: "N",
+    PerMode: "PerGame", Period: 0, PlayerExperience: "",
+    PlayerPosition: "", PlusMinus: "N", Rank: "N", Season: SEASON,
+    SeasonSegment: "", SeasonType: "Regular Season", ShotClockRange: "",
+    StarterBench: "", TeamID: 0, TwoWay: 0, VsConference: "",
+    VsDivision: "", Weight: "",
+  });
+
+  // Params builder for leaguedashptstats
+  // PlayerOrTeam: "Player" is required — without it the endpoint returns team-level rows
+  const ptParams = (PtMeasureType) => ({
+    College: "", Conference: "", Country: "", DateFrom: "", DateTo: "",
+    Division: "", DraftPick: "", DraftYear: "", GameScope: "",
+    GameSegment: "", Height: "", ISTRound: "", LastNGames: 0,
+    LeagueID: "00", Location: "", Month: 0, OpponentTeamID: 0,
+    Outcome: "", PORound: 0, PaceAdjust: "N", PerMode: "PerGame",
+    Period: 0, PlayerExperience: "", PlayerOrTeam: "Player", PlayerPosition: "",
+    PlusMinus: "N", PtMeasureType, Rank: "N",
+    Season: SEASON, SeasonSegment: "", SeasonType: "Regular Season",
+    StarterBench: "", TeamID: 0, VsConference: "", VsDivision: "", Weight: "",
+  });
+
+  // 7 sequential fetches — one at a time to avoid rate limits
+  const advData     = await fetchNBAEndpoint("leaguedashplayerstats", advParams(0,  "Advanced"));
+  const l15AdvData  = await fetchNBAEndpoint("leaguedashplayerstats", advParams(15, "Advanced"));
+  const l15BaseData = await fetchNBAEndpoint("leaguedashplayerstats", advParams(15, "Base"));
+  const possData    = await fetchNBAEndpoint("leaguedashptstats", ptParams("Possessions"));
+  const passData    = await fetchNBAEndpoint("leaguedashptstats", ptParams("Passing"));
+  const driveData   = await fetchNBAEndpoint("leaguedashptstats", ptParams("Drives"));
+  const hustleData  = await fetchNBAEndpoint("leaguehustlestatsplayer", {
+    College: "", Conference: "", Country: "", DateFrom: "", DateTo: "",
+    Division: "", DraftPick: "", DraftYear: "", GameScope: "",
+    Height: "", LastNGames: 0, LeagueID: "00", Location: "", Month: 0,
+    OpponentTeamID: 0, Outcome: "", PerMode: "PerGame",
+    PlayerExperience: "", PlayerPosition: "",
+    Season: SEASON, SeasonSegment: "", SeasonType: "Regular Season",
+    StarterBench: "", TeamID: 0, VsConference: "", VsDivision: "", Weight: "",
+  });
+
+  // Build lookup maps keyed by PLAYER_ID
+  const advMap     = new Map(parseResultSet(advData,     0).map((r) => [r.PLAYER_ID, r]));
+  const l15AdvMap  = new Map(parseResultSet(l15AdvData,  0).map((r) => [r.PLAYER_ID, r]));
+  const l15BaseMap = new Map(parseResultSet(l15BaseData, 0).map((r) => [r.PLAYER_ID, r]));
+  const possMap    = new Map(parseResultSet(possData,    0).map((r) => [r.PLAYER_ID, r]));
+  const passMap    = new Map(parseResultSet(passData,    0).map((r) => [r.PLAYER_ID, r]));
+  const driveMap   = new Map(parseResultSet(driveData,   0).map((r) => [r.PLAYER_ID, r]));
+  const hustleMap  = new Map(parseResultSet(hustleData,  0).map((r) => [r.PLAYER_ID, r]));
+
+  // Season PPG comes from the players table (already populated by refreshPlayers)
+  const seasonPpgStmt = db.prepare("SELECT ppg FROM players WHERE player_id = ?");
+
+  const ins = db.prepare(`
+    INSERT OR REPLACE INTO player_profiles VALUES
+    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `);
+
+  let count = 0;
+  db.transaction(() => {
+    db.prepare("DELETE FROM player_profiles").run();
+    for (const [pid, adv] of advMap) {
+      const poss    = possMap.get(pid)    || {};
+      const pass    = passMap.get(pid)    || {};
+      const drive   = driveMap.get(pid)   || {};
+      const hustle  = hustleMap.get(pid)  || {};
+      const l15Adv  = l15AdvMap.get(pid)  || {};
+      const l15Base = l15BaseMap.get(pid) || {};
+
+      const l15Ppg    = l15Base.PTS    ?? null;
+      const l15UsgPct = l15Adv.USG_PCT ?? null;
+      const l15TsPct  = l15Adv.TS_PCT  ?? null;
+      const seasonPpg = seasonPpgStmt.get(pid)?.ppg ?? null;
+      // form_factor > 1 = hot streak, < 1 = cold streak, null = insufficient data
+      const formFactor = (l15Ppg != null && seasonPpg != null && seasonPpg > 0)
+        ? +(l15Ppg / seasonPpg).toFixed(3)
+        : null;
+
+      ins.run(
+        pid,
+        adv.PLAYER_NAME,
+        normalizeAbbr(adv.TEAM_ABBREVIATION),
+        // Season advanced
+        adv.USG_PCT      ?? null, adv.TS_PCT    ?? null,
+        adv.AST_PCT      ?? null, adv.AST_TO    ?? null,
+        adv.OREB_PCT     ?? null, adv.DREB_PCT  ?? null,
+        adv.NET_RATING   ?? null, adv.PIE       ?? null, adv.PACE ?? null,
+        // Possessions
+        poss.TOUCHES          ?? null, poss.TIME_OF_POSS    ?? null,
+        poss.FRONT_CT_TOUCHES ?? null, poss.ELBOW_TOUCHES   ?? null,
+        poss.POST_TOUCHES     ?? null, poss.PAINT_TOUCHES   ?? null,
+        // Passing
+        pass.PASSES_MADE        ?? null, pass.POTENTIAL_AST     ?? null,
+        pass.AST_POINTS_CREATED ?? null,
+        // Drives
+        drive.DRIVES       ?? null, drive.DRIVE_PTS    ?? null,
+        drive.DRIVE_FG_PCT ?? null, drive.DRIVE_AST    ?? null,
+        // Hustle
+        hustle.CONTESTED_SHOTS ?? null, hustle.DEFLECTIONS   ?? null,
+        hustle.SCREEN_ASSISTS  ?? null, hustle.CHARGES_DRAWN ?? null,
+        // Recent form (L15)
+        l15Ppg, l15UsgPct, l15TsPct, formFactor,
+        Date.now()
+      );
+      count++;
+    }
+    db.prepare("INSERT OR REPLACE INTO meta VALUES ('player_profiles', ?)").run(Date.now());
+  })();
+  console.log(`[DB] Player profiles: ${count} rows saved`);
+}
+
+function runClustering() {
+  const script = path.join(__dirname, "ml", "cluster_players.py");
+  if (!fs.existsSync(script)) {
+    console.warn("[Clustering] ml/cluster_players.py not found, skipping");
+    return;
+  }
+  const proc = spawn("python", [script], { cwd: __dirname });
+  proc.stdout.on("data", (d) => console.log("[Clustering]", d.toString().trim()));
+  proc.stderr.on("data", (d) => console.warn("[Clustering]", d.toString().trim()));
+  proc.on("close", (code) => {
+    if (code === 0) console.log("[Clustering] Archetypes updated successfully");
+    else console.warn(`[Clustering] Exited with code ${code}`);
+  });
+  proc.on("error", (e) => console.warn("[Clustering] Failed to spawn python:", e.message));
+}
+
 async function refreshAll(force = false) {
   await Promise.allSettled([
     (force || isStale("players")   || isEmpty("players"))         ? refreshPlayers()  : Promise.resolve(),
@@ -397,6 +615,107 @@ async function refreshAll(force = false) {
     (force || isStale("leaders")   || isEmpty("league_leaders"))  ? refreshLeaders()  : Promise.resolve(),
     (force || isStale("lineups")   || isEmpty("lineups"))         ? refreshLineups()  : Promise.resolve(),
   ]);
+  // Player profiles run after — 7 sequential API calls, keep them separate
+  if (force || isStale("player_profiles", 24 * 60 * 60 * 1000) || isEmpty("player_profiles")) {
+    await refreshPlayerProfiles().catch((e) => console.error("[DB] Player profiles error:", e.message));
+    // Re-cluster archetypes after profiles update
+    runClustering();
+  }
+  // Current season game log update — runs once per day after players table is fresh
+  if (force || isStale("game_logs_current", 24 * 60 * 60 * 1000)) {
+    await updateCurrentSeasonLogs().catch((e) => console.error("[GameLogs] Update error:", e.message));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Game log collection — historical backfill + nightly current-season update
+// ---------------------------------------------------------------------------
+
+async function fetchAndStoreGameLogs(pid, name, season, skipIfFull = false) {
+  if (skipIfFull) {
+    const { c } = db.prepare(
+      "SELECT COUNT(*) as c FROM player_game_logs WHERE player_id = ? AND season = ?"
+    ).get(pid, season);
+    if (c > 50) return 0;  // already have a full season, skip
+  }
+
+  const data = await fetchNBAEndpoint("playergamelog", {
+    PlayerID: pid, Season: season, SeasonType: "Regular Season",
+  });
+  const rows = parseResultSet(data, 0);
+  const ins = db.prepare(
+    `INSERT OR IGNORE INTO player_game_logs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+
+  let inserted = 0;
+  db.transaction(() => {
+    for (const r of rows) {
+      const matchup = r.MATCHUP || "";
+      const oppMatch = matchup.match(/(?:vs\.|@)\s*(\w+)/);
+      const result = ins.run(
+        pid, name, normalizeAbbr(r.TEAM_ABBREVIATION), season,
+        toISODate(r.GAME_DATE),
+        oppMatch ? normalizeAbbr(oppMatch[1]) : null,
+        matchup.includes("vs.") ? 1 : 0,
+        r.MIN ?? null,
+        r.PTS ?? null, r.REB ?? null, r.AST ?? null,
+        r.STL ?? null, r.BLK ?? null,
+        r.FGM ?? null, r.FGA ?? null,
+        r.FG3M ?? null, r.FG3A ?? null,
+        r.FTM ?? null, r.FTA ?? null,
+        r.TOV ?? null, r.PLUS_MINUS ?? null
+      );
+      if (result.changes > 0) inserted++;
+    }
+  })();
+  return inserted;
+}
+
+// One-time backfill: 2023-24 and 2024-25 for top 150 players by MPG
+async function backfillHistoricalLogs() {
+  const players = db.prepare(
+    "SELECT player_id, name FROM players WHERE mpg >= 20 ORDER BY mpg DESC LIMIT 150"
+  ).all();
+  if (players.length === 0) {
+    console.log("[GameLogs] Players table empty, deferring backfill");
+    return;
+  }
+  console.log(`[GameLogs] Backfilling 2 seasons for ${players.length} players...`);
+  let total = 0;
+  for (const { player_id: pid, name } of players) {
+    for (const season of ["2023-24", "2024-25"]) {
+      try {
+        const n = await fetchAndStoreGameLogs(pid, name, season, true);
+        total += n;
+        if (n > 0) console.log(`[GameLogs] ${name} ${season}: +${n}`);
+      } catch (e) {
+        console.warn(`[GameLogs] ${name} ${season}: ${e.message}`);
+      }
+      await new Promise((r) => setTimeout(r, 150)); // rate limit
+    }
+  }
+  db.prepare("INSERT OR REPLACE INTO meta VALUES ('game_logs_backfill', ?)").run(Date.now());
+  console.log(`[GameLogs] Historical backfill complete: ${total} rows`);
+}
+
+// Daily update: current season only, INSERT OR IGNORE handles duplicates
+async function updateCurrentSeasonLogs() {
+  console.log("[GameLogs] Updating current season logs...");
+  const players = db.prepare(
+    "SELECT player_id, name FROM players WHERE mpg >= 20 ORDER BY mpg DESC LIMIT 150"
+  ).all();
+  if (players.length === 0) return;
+  let total = 0;
+  for (const { player_id: pid, name } of players) {
+    try {
+      total += await fetchAndStoreGameLogs(pid, name, SEASON, false);
+    } catch (e) {
+      console.warn(`[GameLogs] ${name} current: ${e.message}`);
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  db.prepare("INSERT OR REPLACE INTO meta VALUES ('game_logs_current', ?)").run(Date.now());
+  console.log(`[GameLogs] Current season update complete: ${total} new rows`);
 }
 
 // ---------------------------------------------------------------------------
@@ -458,6 +777,7 @@ async function gatherPredictionContext() {
   });
   const games = scoreboardData.scoreboard?.games || [];
   const upcomingGames = games.filter((g) => g.gameStatus === 1);
+  console.log(`[Predictions] ${dateStr}: ${games.length} total games, ${upcomingGames.length} upcoming (status=1)`);
   if (upcomingGames.length === 0) return { games: [], dateStr, context: "" };
 
   // Pull from local DB
@@ -482,10 +802,8 @@ async function gatherPredictionContext() {
       const data = await fetchNBAEndpoint("teamgamelog", {
         TeamID: tid, Season: SEASON, SeasonType: "Regular Season",
       });
-      gameLogs[abbr] = parseResultSet(data, 0).slice(0, 5).map((r) => ({
-        date: r.GAME_DATE, matchup: r.MATCHUP, wl: r.WL,
-        pts: r.PTS, fgPct: r.FG_PCT, fg3Pct: r.FG3_PCT,
-        reb: r.REB, ast: r.AST, tov: r.TOV,
+      gameLogs[abbr] = parseResultSet(data, 0).slice(0, 3).map((r) => ({
+        matchup: r.MATCHUP, wl: r.WL, pts: r.PTS,
       }));
     } catch { /* skip if unavailable */ }
   }
@@ -500,22 +818,66 @@ async function gatherPredictionContext() {
   `).get();
 
   // Build context
-  const standingsText = standings.map((s) =>
-    `${s.team}: ${s.wins}-${s.losses} (.${Math.round(s.pct * 1000)}) PPG:${s.ppg} OPP:${s.opp_ppg} DIFF:${s.diff} Home:${s.home_rec} Away:${s.away_rec} L10:${s.last10} Streak:${s.streak}`
-  ).join("\n");
+  // Only include standings for teams playing today
+  const standingsText = standings
+    .filter((s) => teamAbbrs.has(s.team))
+    .map((s) => `${s.team}: ${s.wins}-${s.losses} DIFF:${s.diff} L10:${s.last10} Streak:${s.streak}`)
+    .join("\n");
 
   const gamesText = upcomingGames.map((g) => {
     const home = TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode;
     const away = TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode;
-    const homeLog = (gameLogs[home] || []).map((l) => `  ${l.date} ${l.matchup} ${l.wl} ${l.pts}pts`).join("\n");
-    const awayLog = (gameLogs[away] || []).map((l) => `  ${l.date} ${l.matchup} ${l.wl} ${l.pts}pts`).join("\n");
-    return `${away} @ ${home} (GameID: ${g.gameId})\nHome (${home}) last 5:\n${homeLog}\nAway (${away}) last 5:\n${awayLog}`;
+    const homeLog = (gameLogs[home] || []).map((l) => `${l.matchup} ${l.wl} ${l.pts}pts`).join(", ");
+    const awayLog = (gameLogs[away] || []).map((l) => `${l.matchup} ${l.wl} ${l.pts}pts`).join(", ");
+    return `${away}@${home} (${g.gameId}) | ${home} L3: ${homeLog} | ${away} L3: ${awayLog}`;
   }).join("\n\n");
 
-  const relevantPlayers = topPlayers.filter((p) => teamAbbrs.has(p.team));
-  const playersText = relevantPlayers.slice(0, 40).map((p) =>
-    `${p.name} (${p.team}, ${p.pos}): ${p.ppg}ppg ${p.rpg}rpg ${p.apg}apg FG:${(p.fg_pct * 100).toFixed(1)}% 3P:${(p.tp_pct * 100).toFixed(1)}%`
-  ).join("\n");
+  const relevantPlayers = topPlayers.filter((p) => teamAbbrs.has(p.team)).slice(0, 20);
+  const profileMap = new Map();
+  if (relevantPlayers.length > 0) {
+    const placeholders = relevantPlayers.map(() => "?").join(",");
+    const profileRows = db.prepare(
+      `SELECT player_id, usg_pct, ts_pct, net_rating, form_factor, archetype_label FROM player_profiles WHERE player_id IN (${placeholders})`
+    ).all(...relevantPlayers.map((p) => p.player_id));
+    for (const r of profileRows) profileMap.set(r.player_id, r);
+  }
+  const l5Stmt = db.prepare(
+    "SELECT pts, game_date FROM player_game_logs WHERE player_id = ? ORDER BY game_date DESC LIMIT 5"
+  );
+  const playersText = relevantPlayers.map((p) => {
+    const base = `${p.name} (${p.team}): ${p.ppg}ppg ${p.rpg}r ${p.apg}a`;
+    // L5 rolling form
+    const l5 = l5Stmt.all(p.player_id);
+    let l5Str = "";
+    if (l5.length >= 3) {
+      const l5Pts = l5.map((r) => r.pts).filter((x) => x != null);
+      if (l5Pts.length > 0) {
+        const l5Avg = l5Pts.reduce((a, b) => a + b, 0) / l5Pts.length;
+        const seasonPpg = parseFloat(p.ppg) || 0;
+        const formLabel = seasonPpg > 0
+          ? l5Avg > seasonPpg * 1.1 ? " HOT" : l5Avg < seasonPpg * 0.9 ? " COLD" : ""
+          : "";
+        const lastGameDate = l5[0]?.game_date;
+        const restDays = lastGameDate
+          ? Math.round((new Date(dateStr) - new Date(lastGameDate)) / 86400000)
+          : null;
+        l5Str = ` | L${l5Pts.length}:${l5Pts.join(",")} avg ${l5Avg.toFixed(1)}${formLabel}${restDays != null ? ` rest:${restDays}d` : ""}`;
+      }
+    }
+    // Advanced profile stats
+    const prof = profileMap.get(p.player_id);
+    let profStr = "";
+    if (prof) {
+      const parts = [];
+      if (prof.usg_pct != null) parts.push(`USG:${(prof.usg_pct * 100).toFixed(1)}%`);
+      if (prof.ts_pct != null) parts.push(`TS:${(prof.ts_pct * 100).toFixed(1)}%`);
+      if (prof.net_rating != null) parts.push(`NET:${prof.net_rating > 0 ? "+" : ""}${prof.net_rating.toFixed(1)}`);
+      if (prof.form_factor != null) parts.push(`FF:${prof.form_factor.toFixed(2)}`);
+      if (parts.length > 0) profStr = ` | ${parts.join(" ")}`;
+      if (prof.archetype_label) profStr += ` [${prof.archetype_label}]`;
+    }
+    return `${base}${l5Str}${profStr}`;
+  }).join("\n");
 
   const accuracyText = last30.total > 0
     ? `Your historical accuracy (last 30 days): ${last30.wins}/${last30.total} (${((last30.wins / last30.total) * 100).toFixed(1)}%). Adjust your approach based on past errors.`
@@ -688,8 +1050,10 @@ async function gradePredictions() {
 }
 
 async function runPredictionJobs() {
-  try { await generatePredictions(); } catch (e) { console.error("[Predictions] Error:", e.message); }
+  console.log("[PredictionJobs] Starting...");
+  try { await generatePredictions(); } catch (e) { console.error("[Predictions] Error:", e.message, e.stack); }
   try { await gradePredictions(); } catch (e) { console.error("[Grading] Error:", e.message); }
+  console.log("[PredictionJobs] Done.");
 }
 
 // ---------------------------------------------------------------------------
@@ -791,6 +1155,104 @@ app.get("/api/db/lineups", (req, res) => {
   })));
 });
 
+app.get("/api/db/player-profiles", (req, res) => {
+  const team = req.query.team;
+  const playerId = req.query.playerId ? parseInt(req.query.playerId) : null;
+  const rows = playerId
+    ? db.prepare("SELECT * FROM player_profiles WHERE player_id = ?").all(playerId)
+    : team
+      ? db.prepare("SELECT * FROM player_profiles WHERE team = ? ORDER BY usg_pct DESC").all(team)
+      : db.prepare("SELECT * FROM player_profiles ORDER BY usg_pct DESC").all();
+  res.json(rows.map((r) => ({
+    playerId:        r.player_id,
+    name:            r.name,
+    team:            r.team,
+    // Advanced
+    usgPct:          r.usg_pct != null   ? +(r.usg_pct * 100).toFixed(1)  : null,
+    tsPct:           r.ts_pct != null    ? +(r.ts_pct  * 100).toFixed(1)  : null,
+    astPct:          r.ast_pct != null   ? +(r.ast_pct * 100).toFixed(1)  : null,
+    astTo:           r.ast_to?.toFixed(2)   ?? null,
+    orebPct:         r.oreb_pct != null  ? +(r.oreb_pct * 100).toFixed(1) : null,
+    drebPct:         r.dreb_pct != null  ? +(r.dreb_pct * 100).toFixed(1) : null,
+    netRating:       r.net_rating?.toFixed(1) ?? null,
+    pie:             r.pie != null       ? +(r.pie * 100).toFixed(1)      : null,
+    pace:            r.pace?.toFixed(1)  ?? null,
+    // Touches
+    touches:         r.touches?.toFixed(1)          ?? null,
+    timeOfPoss:      r.time_of_poss?.toFixed(1)     ?? null,
+    frontCtTouches:  r.front_ct_touches?.toFixed(1) ?? null,
+    elbowTouches:    r.elbow_touches?.toFixed(1)    ?? null,
+    postTouches:     r.post_touches?.toFixed(1)     ?? null,
+    paintTouches:    r.paint_touches?.toFixed(1)    ?? null,
+    // Passing
+    passesMade:      r.passes_made?.toFixed(1)      ?? null,
+    potentialAst:    r.potential_ast?.toFixed(1)    ?? null,
+    astPtsCreated:   r.ast_pts_created?.toFixed(1)  ?? null,
+    // Drives
+    drives:          r.drives?.toFixed(1)           ?? null,
+    drivePts:        r.drive_pts?.toFixed(1)        ?? null,
+    driveFgPct:      r.drive_fg_pct != null ? +(r.drive_fg_pct * 100).toFixed(1) : null,
+    driveAst:        r.drive_ast?.toFixed(1)        ?? null,
+    // Hustle
+    contestedShots:  r.contested_shots?.toFixed(1)  ?? null,
+    deflections:     r.deflections?.toFixed(1)      ?? null,
+    screenAssists:   r.screen_assists?.toFixed(1)   ?? null,
+    chargesDrawn:    r.charges_drawn?.toFixed(1)    ?? null,
+    // Recent form (L15)
+    l15Ppg:          r.l15_ppg?.toFixed(1)          ?? null,
+    l15UsgPct:       r.l15_usg_pct != null ? +(r.l15_usg_pct * 100).toFixed(1) : null,
+    l15TsPct:        r.l15_ts_pct  != null ? +(r.l15_ts_pct  * 100).toFixed(1) : null,
+    formFactor:      r.form_factor?.toFixed(3)      ?? null,
+    archetypeLabel:  r.archetype_label              ?? null,
+    updatedAt:       r.updated_at,
+  })));
+});
+
+app.get("/api/db/game-logs", (req, res) => {
+  const playerId = parseInt(req.query.playerId);
+  if (!playerId) return res.status(400).json({ error: "playerId required" });
+  const season = req.query.season;
+  const rows = season
+    ? db.prepare(
+        "SELECT * FROM player_game_logs WHERE player_id = ? AND season = ? ORDER BY game_date DESC"
+      ).all(playerId, season)
+    : db.prepare(
+        "SELECT * FROM player_game_logs WHERE player_id = ? ORDER BY game_date DESC"
+      ).all(playerId);
+  res.json(rows.map((r) => ({
+    season:    r.season,
+    date:      r.game_date,
+    opponent:  r.opponent,
+    home:      !!r.home,
+    min:       r.min_played?.toFixed(1) ?? null,
+    pts:       r.pts,
+    reb:       r.reb,
+    ast:       r.ast,
+    stl:       r.stl,
+    blk:       r.blk,
+    fgm:       r.fgm,
+    fga:       r.fga,
+    fg3m:      r.fg3m,
+    fg3a:      r.fg3a,
+    ftm:       r.ftm,
+    fta:       r.fta,
+    tov:       r.tov,
+    plusMinus: r.plus_minus,
+  })));
+});
+
+app.get("/api/db/game-logs/summary", (_req, res) => {
+  const s = db.prepare(`
+    SELECT COUNT(*) as totalRows,
+           COUNT(DISTINCT player_id) as players,
+           COUNT(DISTINCT season) as seasons,
+           MIN(game_date) as earliest,
+           MAX(game_date) as latest
+    FROM player_game_logs
+  `).get();
+  res.json(s);
+});
+
 app.get("/api/db/status", (_req, res) => {
   const status = {};
   ["players", "standings", "leaders"].forEach((k) => {
@@ -812,6 +1274,19 @@ app.post("/api/db/refresh", async (_req, res) => {
     res.json({ success: true, ts: Date.now() });
   } catch (e) {
     console.error("[DB] Refresh failed:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/predictions/generate", async (_req, res) => {
+  try {
+    // Clear today's existing predictions so it reruns even if already saved
+    const dateStr = todayDateStr();
+    db.prepare("DELETE FROM predictions WHERE prediction_date = ?").run(dateStr);
+    await runPredictionJobs();
+    const rows = db.prepare("SELECT COUNT(*) as c FROM predictions WHERE prediction_date = ?").get(dateStr);
+    res.json({ success: true, count: rows.c });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -1019,7 +1494,16 @@ app.listen(PORT, () => {
     6 * 60 * 60 * 1000
   );
   // Predictions: run 30s after startup (let DB populate first), then every 6 hours
-  setTimeout(() => runPredictionJobs(), 30000);
+  setTimeout(() => runPredictionJobs(), 30_000);
+  // Historical game log backfill — runs once ever, 90s after startup
+  const backfillDone = db.prepare("SELECT updated_at FROM meta WHERE key = 'game_logs_backfill'").get();
+  if (!backfillDone) {
+    console.log("[GameLogs] Scheduling one-time historical backfill in 90s...");
+    setTimeout(
+      () => backfillHistoricalLogs().catch((e) => console.error("[GameLogs] Backfill error:", e.message)),
+      90_000
+    );
+  }
   setInterval(
     () => runPredictionJobs().catch((e) => console.error("[PredictionJobs]", e.message)),
     6 * 60 * 60 * 1000
