@@ -468,6 +468,58 @@ export function clearCache() {
 }
 
 // ============================================================================
+// SCORE TICKER — yesterday finals + upcoming (today + 2 days)
+// ============================================================================
+export async function fetchTickerData() {
+  const toLocalStr = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const dayLabel = (d) =>
+    d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+
+  const today = new Date();
+  const offsets = [-1, 0, 1, 2];
+  const dateMeta = offsets.map((n) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + n);
+    return {
+      str: toLocalStr(d),
+      label: n === -1 ? "YESTERDAY" : n === 0 ? "TODAY" : dayLabel(d),
+      isPast: n === -1,
+    };
+  });
+
+  // Sequential fetches — no Promise.all per NBA API rate limit rules
+  const results = [];
+  for (const meta of dateMeta) {
+    const games = await fetchScoreboard(meta.str).catch(() => []);
+    results.push({ ...meta, games });
+  }
+
+  // Yesterday's FINAL scores
+  const finals = results[0].games
+    .filter((g) => g.status === "FINAL")
+    .map((g) => ({ ...g, dateLabel: "YESTERDAY" }));
+
+  // Today + 2 days: UPCOMING and LIVE games
+  const upcoming = [];
+  for (const r of results.slice(1)) {
+    for (const g of r.games) {
+      if (g.status !== "FINAL") upcoming.push({ ...g, dateLabel: r.label });
+    }
+  }
+
+  // Fallback: if no upcoming games, also include today's finals
+  if (upcoming.length === 0) {
+    const todayFinals = results[1].games
+      .filter((g) => g.status === "FINAL")
+      .map((g) => ({ ...g, dateLabel: "TODAY" }));
+    return [...finals, ...todayFinals];
+  }
+
+  return [...finals, ...upcoming];
+}
+
+// ============================================================================
 // PREDICTIONS — served from SQLite via /api/predictions/*
 // ============================================================================
 export async function fetchPredictionsToday() {
