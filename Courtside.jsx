@@ -12,6 +12,7 @@ import {
   fetchPredictionsToday,
   fetchPredictionHistory,
   fetchPredictionAccuracy,
+  fetchTickerData,
 } from "./src/nbaApi.js";
 import {
   BarChart,
@@ -52,7 +53,27 @@ import {
   Info,
   Activity,
   Target,
+  User,
 } from "lucide-react";
+
+// ============================================================================
+// ABOUT — Edit this section to personalise the About page
+// ============================================================================
+const ABOUT = {
+  name: "Avi Rabin",
+  title: "Data Engineer with a passion for Basketball",
+  // Write as many paragraphs as you like — each string becomes its own paragraph
+  bio: [
+    "Avi is a Data Engineer from Los Angeles who loves all things basketball and data.  As a logical marriage of these two passions he decided to crate Courtside, a Basketball stats and predictions dashboarding tool.",
+  ],
+  // Links shown as buttons — set href to null to hide a link
+  links: [
+    { label: "GitHub", href: null },
+    { label: "LinkedIn", href: null },
+    { label: "Twitter", href: null },
+    { label: "Email", href: null },  // use "mailto:you@example.com"
+  ],
+};
 
 // ============================================================================
 // MOCK DATA — Mirrors nba_api response structures
@@ -316,17 +337,6 @@ const mockData = {
       { name: "Buddy Hield", team: "PHI", value: "3.1" },
     ],
   },
-
-  // News ticker items
-  headlines: [
-    "Wembanyama records 30-point triple-double in Spurs victory",
-    "Lakers exploring trade options ahead of deadline",
-    "Celtics extend winning streak to 5 games",
-    "Thunder's SGA named Western Conference Player of the Week",
-    "Jokic posts 15th triple-double of the season",
-    "Injury update: Embiid expected to return next week",
-    "All-Star voting results: Giannis leads Eastern Conference",
-  ],
 
   // Detailed game data keyed by game id — only game-2 (LAL vs GSW) is fully fleshed out
   gameDetails: {
@@ -1083,7 +1093,7 @@ const STYLES = `
     gap: 24px;
     white-space: nowrap;
   }
-  .ticker-track:hover { animation-play-state: paused; }
+  .ticker-track:hover { animation-play-state: running; }
 
   .score-scroll {
     scrollbar-width: none;
@@ -1189,6 +1199,7 @@ function NavBar({ currentPage, setCurrentPage, onPlayerSelect, onTeamSelect }) {
     { key: "lineups", label: "Lineups", icon: Activity },
     { key: "games", label: "Games", icon: Calendar },
     { key: "predictions", label: "Predictions", icon: Target },
+    { key: "about", label: "About", icon: User },
   ];
 
   const searchResults = useMemo(() => {
@@ -1420,6 +1431,7 @@ function PredictionsPage() {
   const [accuracyData, setAccuracyData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -1428,8 +1440,8 @@ function PredictionsPage() {
       tab === "today"
         ? fetchPredictionsToday
         : tab === "results"
-        ? () => fetchPredictionHistory(7)
-        : fetchPredictionAccuracy;
+          ? () => fetchPredictionHistory(7)
+          : fetchPredictionAccuracy;
     fetcher()
       .then((d) => {
         if (tab === "today") setTodayData(d);
@@ -1528,7 +1540,7 @@ function PredictionsPage() {
     const awayTeam = TEAMS[p.awayTeam] || {};
     // playerProps already parsed by server; handle both string and array
     let props = [];
-    try { props = Array.isArray(p.playerProps) ? p.playerProps : JSON.parse(p.playerProps || "[]"); } catch {}
+    try { props = Array.isArray(p.playerProps) ? p.playerProps : JSON.parse(p.playerProps || "[]"); } catch { }
     const confidencePct = p.confidence <= 1 ? Math.round(p.confidence * 100) : p.confidence;
 
     return (
@@ -1811,6 +1823,145 @@ function PredictionsPage() {
       ) : (
         renderTrendTab()
       )}
+
+      {/* ===== HOW IT WORKS ===== */}
+      <div style={{ marginTop: 40 }}>
+        <button
+          onClick={() => setShowHowItWorks((v) => !v)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--text-secondary)",
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: "'Inter', sans-serif",
+            padding: 0,
+            marginBottom: showHowItWorks ? 16 : 0,
+          }}
+        >
+          <Info size={14} />
+          How predictions are generated
+          <span style={{ fontSize: 10, marginLeft: 2 }}>{showHowItWorks ? "▲" : "▼"}</span>
+        </button>
+
+        {showHowItWorks && (
+          <div
+            className="card-hover"
+            style={{ padding: "24px 28px", borderRadius: 12, lineHeight: 1.7 }}
+          >
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginTop: 0, marginBottom: 16 }}>
+              ML Pipeline Overview
+            </h3>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+              {/* Step 1 */}
+              <div style={{ display: "flex", gap: 16 }}>
+                <div style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: "50%",
+                  background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.35)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace",
+                }}>1</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Player Profiles (nightly refresh)</div>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
+                    Each night the server pulls live data from the NBA Stats API across 7 endpoints — advanced stats
+                    (usage rate, true shooting, assist-to-turnover, net rating), player tracking
+                    (drives, paint touches, passes made), and hustle metrics (deflections, contested shots,
+                    screen assists). It also computes a 15-game rolling window for PPG, USG%, and TS% to
+                    capture recent form, and a <strong>form factor</strong> (L15 PPG ÷ season PPG) that flags
+                    whether a player is running hot or cold.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div style={{ display: "flex", gap: 16 }}>
+                <div style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: "50%",
+                  background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.35)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace",
+                }}>2</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>K-Means Archetype Clustering</div>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
+                    After every profile refresh, a Python script clusters all ~545 active players using
+                    K-means (k=8) on 13 features: 10 statistical (USG%, TS%, AST%, AST/TO, OREB%, DREB%,
+                    contested shots, deflections, screen assists, net rating) plus 3 positional encodings
+                    derived from each player's listed position (guard / wing / big, encoded as continuous
+                    values so a G-F reads as 0.7 guard + 0.5 wing). Clusters are labeled by centroid rules
+                    (e.g., high AST% + guard → LEAD GUARD), then per-player position overrides handle
+                    edge cases — a forward who clusters with guards becomes POINT FORWARD (Luka Doncic),
+                    a big guard with elite playmaking becomes OVERSIZED PLAYMAKER. The archetype is shown
+                    as a badge on each player's profile page.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div style={{ display: "flex", gap: 16 }}>
+                <div style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: "50%",
+                  background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.35)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace",
+                }}>3</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Enriched Claude Prompt</div>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
+                    At prediction time, each player in a matchup is described with a rich context line, e.g.:
+                  </p>
+                  <pre style={{
+                    fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                    background: "var(--bg-primary)", border: "1px solid var(--border-color)",
+                    borderRadius: 6, padding: "10px 14px", margin: "8px 0 0",
+                    color: "var(--text-secondary)", overflowX: "auto", whiteSpace: "pre-wrap",
+                  }}>
+                    {`SGA (OKC): 32.1ppg 5.1r 6.3a | L5: 35,29,38,31,27 avg 32.0 HOT rest:1d
+  USG:33.4% TS:64.2% NET:+11.3 FF:1.04 [LEAD_GUARD]`}
+                  </pre>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "8px 0 0" }}>
+                    Claude also receives current standings, each team's last-5 game results, and a rolling
+                    accuracy summary from past predictions. It returns structured JSON with a predicted
+                    winner, spread, confidence score, player props, and plain-English reasoning.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 4 */}
+              <div style={{ display: "flex", gap: 16 }}>
+                <div style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: "50%",
+                  background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.35)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace",
+                }}>4</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Automated Grading & Feedback</div>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
+                    Every 6 hours the server checks whether past predictions can be graded against final
+                    scores. Correct picks, spread error, and a rolling 30-day accuracy are computed and
+                    fed back into the next prediction prompt — so Claude is always aware of its recent
+                    track record when generating new picks.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color)", fontSize: 12, color: "var(--text-muted)" }}>
+              Data refreshes nightly at ~2 AM ET. Predictions are generated daily for upcoming games.
+              Archetype labels update automatically after each profile refresh.
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1852,7 +2003,7 @@ function PlayerHeadshot({ nbaId, name, size = 64, teamColor = "#333", style = {}
   if (failed || !nbaId) {
     return (
       <div style={{ width: size, height: size, borderRadius: radius, background: teamColor + "22", border: `2px solid ${teamColor}44`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, ...style }}>
-        <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 24 24" fill="none" stroke={teamColor} strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 24 24" fill="none" stroke={teamColor} strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
       </div>
     );
   }
@@ -2612,48 +2763,214 @@ function LeagueLeaders({ data, onPlayerClick }) {
   );
 }
 
+// --- About Page ---
+function AboutPage() {
+  const activeLinks = ABOUT.links.filter((l) => l.href);
+
+  return (
+    <div className="fade-in" style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px 80px" }}>
+      {/* Header */}
+      <div
+        className="card-hover"
+        style={{
+          padding: "36px 40px",
+          borderRadius: 16,
+          marginBottom: 24,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg, var(--accent), var(--accent-amber))" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 20 }}>
+          <img
+            src="/2024profile.jpg"
+            alt={ABOUT.name}
+            style={{
+              width: 80, height: 80, borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid rgba(249,115,22,0.35)",
+              flexShrink: 0,
+            }}
+          />
+          <div>
+            <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>{ABOUT.name}</h1>
+            {ABOUT.title && (
+              <div style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 4 }}>{ABOUT.title}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Bio paragraphs */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {ABOUT.bio.map((para, i) => (
+            <p key={i} style={{ margin: 0, fontSize: 15, color: "var(--text-secondary)", lineHeight: 1.75 }}>
+              {para}
+            </p>
+          ))}
+        </div>
+
+        {/* Links */}
+        {activeLinks.length > 0 && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 24 }}>
+            {activeLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                target={link.href.startsWith("mailto") ? undefined : "_blank"}
+                rel="noopener noreferrer"
+                style={{
+                  padding: "7px 18px",
+                  borderRadius: 8,
+                  background: "var(--bg-tertiary)",
+                  border: "1px solid var(--border-color)",
+                  color: "var(--text-primary)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  transition: "border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-color)"; e.currentTarget.style.color = "var(--text-primary)"; }}
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* About this app */}
+      <div className="card-hover" style={{ padding: "28px 32px", borderRadius: 16 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px" }}>About Courtside</h2>
+        <p style={{ margin: "0 0 12px", fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.75 }}>
+          Courtside is a personal NBA analytics dashboard built with React, Node.js, and SQLite.
+          It pulls live data from the NBA Stats API, stores historical player profiles and game logs,
+          and uses Claude (Anthropic) to generate daily game predictions with automated grading.
+        </p>
+        <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.75 }}>
+          Player archetypes (Lead Guard, Point Forward, Paint Beast, etc.) are derived nightly
+          via K-means clustering on advanced stats — usage rate, true shooting, assist rate,
+          defensive metrics, and positional encoding across all ~545 active NBA players.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // --- News Ticker ---
-function NewsTicker({ headlines }) {
+function tickerTeamColor(abbr) {
+  const team = TEAMS[abbr];
+  if (!team) return "var(--text-secondary)";
+
+  const score = (hex) => {
+    const h = hex.replace("#", "");
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+    // Usable = bright enough AND colorful enough
+    return luminance >= 0.18 && chroma >= 0.15;
+  };
+
+  if (score(team.color)) return team.color;
+  if (score(team.secondaryColor)) return team.secondaryColor;
+  return "var(--text-primary)"; // e.g. SAS silver + BKN black → plain white
+}
+
+function NewsTicker({ items }) {
+  if (!items || items.length === 0) return null;
+
+  const renderItem = (game, i) => {
+    const isFinal = game.status === "FINAL";
+    const isLive = game.status === "LIVE";
+    const homeWon = isFinal && game.homeScore > game.awayScore;
+    const awayWon = isFinal && game.awayScore > game.homeScore;
+
+    return (
+      <span
+        key={i}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
+      >
+        {/* Date/status label */}
+        <span style={{
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: "0.6px",
+          textTransform: "uppercase",
+          fontFamily: "'JetBrains Mono', monospace",
+          color: isLive ? "#22c55e" : isFinal ? "var(--text-muted)" : "var(--accent)",
+          minWidth: 52,
+        }}>
+          {isLive ? "LIVE" : game.dateLabel}
+        </span>
+
+        {/* Away team */}
+        <span style={{
+          fontWeight: awayWon ? 700 : 500,
+          color: tickerTeamColor(game.awayTeam),
+          fontSize: 13,
+          fontFamily: "'JetBrains Mono', monospace",
+          opacity: isFinal && !awayWon ? 0.6 : 1,
+        }}>
+          {game.awayTeam}
+        </span>
+
+        {/* Score or vs */}
+        {(isFinal || isLive) ? (
+          <span style={{ color: "var(--text-muted)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontWeight: awayWon ? 700 : 400, color: awayWon ? "var(--text-primary)" : "var(--text-secondary)" }}>{game.awayScore}</span>
+            {" – "}
+            <span style={{ fontWeight: homeWon ? 700 : 400, color: homeWon ? "var(--text-primary)" : "var(--text-secondary)" }}>{game.homeScore}</span>
+          </span>
+        ) : (
+          <span style={{ color: "var(--text-muted)", fontSize: 11 }}>@</span>
+        )}
+
+        {/* Home team */}
+        <span style={{
+          fontWeight: homeWon ? 700 : 500,
+          color: tickerTeamColor(game.homeTeam),
+          fontSize: 13,
+          fontFamily: "'JetBrains Mono', monospace",
+          opacity: isFinal && !homeWon ? 0.6 : 1,
+        }}>
+          {game.homeTeam}
+        </span>
+
+        {/* Time for upcoming, clock for live */}
+        {isLive && (
+          <span style={{ fontSize: 11, color: "#22c55e", fontFamily: "'JetBrains Mono', monospace" }}>
+            Q{game.quarter} {game.timeRemaining}
+          </span>
+        )}
+        {!isFinal && !isLive && game.scheduledTime && (
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>
+            {game.scheduledTime}
+          </span>
+        )}
+
+        {/* Separator */}
+        <span style={{ color: "var(--border-color)", margin: "0 10px", fontSize: 14 }}>·</span>
+      </span>
+    );
+  };
+
+  const doubled = [...items, ...items];
+
   return (
     <div
       style={{
         background: "var(--bg-secondary)",
         borderTop: "1px solid var(--border-color)",
         borderBottom: "1px solid var(--border-color)",
-        padding: "10px 0",
+        padding: "9px 0",
         overflow: "hidden",
         position: "relative",
       }}
     >
       <div className="ticker-track">
-        {[...headlines, ...headlines].map((h, i) => (
-          <span
-            key={i}
-            style={{
-              fontSize: 13,
-              color: "var(--text-secondary)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <span
-              style={{
-                color: "var(--accent-amber)",
-                fontWeight: 700,
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-              }}
-            >
-              Trending
-            </span>
-            {h}
-            <span style={{ color: "var(--border-hover)", margin: "0 8px" }}>
-              |
-            </span>
-          </span>
-        ))}
+        {doubled.map((g, i) => renderItem(g, i))}
       </div>
     </div>
   );
@@ -2670,6 +2987,7 @@ function MobileBottomNav({ currentPage, setCurrentPage }) {
     { key: "compare", label: "Compare", icon: Layers },
     { key: "games", label: "Games", icon: Calendar },
     { key: "predictions", label: "Predict", icon: Target },
+    { key: "about", label: "About", icon: User },
   ];
   return (
     <div
@@ -2823,19 +3141,19 @@ function GamesPage({ onGameClick }) {
   }, [selGames]);
 
   // Bar chart data — one entry per day
-  const DAYS  = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const chartData = useMemo(() => weekDates.map((d, i) => {
     const games = weekGames?.[i] || [];
     return {
-      dayLabel:  DAYS[d.getDay()],
+      dayLabel: DAYS[d.getDay()],
       dateLabel: `${MONTHS[d.getMonth()]} ${d.getDate()}`,
-      final:    games.filter((g) => g.status === "FINAL").length,
-      live:     games.filter((g) => g.status === "LIVE").length,
+      final: games.filter((g) => g.status === "FINAL").length,
+      live: games.filter((g) => g.status === "LIVE").length,
       upcoming: games.filter((g) => g.status === "UPCOMING").length,
-      total:    games.length,
-      isToday:  fmtDateStr(d) === todayStr,
-      idx:      i,
+      total: games.length,
+      isToday: fmtDateStr(d) === todayStr,
+      idx: i,
     };
   }), [weekGames, weekDates, todayStr]);
 
@@ -2857,10 +3175,10 @@ function GamesPage({ onGameClick }) {
     return (
       <div style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>{d.dateLabel}{d.isToday ? " · Today" : ""}</div>
-        {d.live     > 0 && <div style={{ color: "var(--accent-red)"   }}>Live: {d.live}</div>}
-        {d.final    > 0 && <div style={{ color: "var(--accent-green)" }}>Final: {d.final}</div>}
+        {d.live > 0 && <div style={{ color: "var(--accent-red)" }}>Live: {d.live}</div>}
+        {d.final > 0 && <div style={{ color: "var(--accent-green)" }}>Final: {d.final}</div>}
         {d.upcoming > 0 && <div style={{ color: "var(--accent-amber)" }}>Upcoming: {d.upcoming}</div>}
-        {d.total   === 0 && <div style={{ color: "var(--text-muted)"  }}>No games</div>}
+        {d.total === 0 && <div style={{ color: "var(--text-muted)" }}>No games</div>}
       </div>
     );
   };
@@ -3097,19 +3415,19 @@ function Breadcrumb({ items }) {
 
 // --- Player Browse Page ---
 const SORT_OPTIONS = [
-  { value: "name",       label: "Name (A–Z)" },
-  { value: "ppg",        label: "Points (PPG)" },
-  { value: "rpg",        label: "Rebounds (RPG)" },
-  { value: "apg",        label: "Assists (APG)" },
-  { value: "plusMinus",  label: "Plus/Minus" },
+  { value: "name", label: "Name (A–Z)" },
+  { value: "ppg", label: "Points (PPG)" },
+  { value: "rpg", label: "Rebounds (RPG)" },
+  { value: "apg", label: "Assists (APG)" },
+  { value: "plusMinus", label: "Plus/Minus" },
 ];
 
 // NBA bulk stats API returns generic position groups (G / F / C / G-F / F-G / F-C / C-F).
 // Specific positions (PG/SG/SF/PF) only appear on mock-enriched players.
 const POSITION_OPTIONS = [
-  { value: "Guard",   label: "Guard",   matches: ["G",  "G-F", "PG", "SG"] },
-  { value: "Forward", label: "Forward", matches: ["F",  "F-G", "F-C", "SF", "PF"] },
-  { value: "Center",  label: "Center",  matches: ["C",  "C-F"] },
+  { value: "Guard", label: "Guard", matches: ["G", "G-F", "PG", "SG"] },
+  { value: "Forward", label: "Forward", matches: ["F", "F-G", "F-C", "SF", "PF"] },
+  { value: "Center", label: "Center", matches: ["C", "C-F"] },
 ];
 
 function PlayerBrowsePage({ onPlayerSelect }) {
@@ -3373,7 +3691,7 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
           setArchetypeLabel(rows[0].archetypeLabel);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => { cancelled = true; };
   }, [mockPlayer?.nbaId, livePlayerData?.nbaId]);
 
@@ -3514,18 +3832,22 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
               <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800 }}>{player.name}</h1>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: team.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "white" }}>{player.team}</div>
               {archetypeLabel && (
-                <div style={{
-                  background: "rgba(249,115,22,0.15)",
-                  border: "1px solid rgba(249,115,22,0.4)",
-                  borderRadius: 20,
-                  padding: "3px 10px",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "var(--accent)",
-                  letterSpacing: "0.5px",
-                  textTransform: "uppercase",
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}>
+                <div
+                  title="Player archetype derived from K-means clustering of NBA Stats advanced metrics (USG%, TS%, AST%, net rating, hustle stats) + position encoding. Updated nightly."
+                  style={{
+                    background: "rgba(249,115,22,0.15)",
+                    border: "1px solid rgba(249,115,22,0.4)",
+                    borderRadius: 20,
+                    padding: "3px 10px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--accent)",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: "help",
+                  }}
+                >
                   {archetypeLabel.replace(/_/g, " ")}
                 </div>
               )}
@@ -3911,25 +4233,25 @@ function LineupAnalyzerPage() {
   // Column definitions
   const multiColumns = [
     { key: "players", label: "Lineup", width: "1fr", align: "left" },
-    { key: "gp",        label: "GP",   width: 44 },
-    { key: "min",       label: "MIN",  width: 50 },
-    { key: "netRtg",    label: "NET",  width: 56 },
-    { key: "ortg",      label: "ORTG", width: 54 },
-    { key: "drtg",      label: "DRTG", width: 54 },
-    { key: "plusMinus", label: "+/-",  width: 54 },
-    { key: "pts",       label: "PPG",  width: 50 },
-    { key: "fgPct",     label: "FG%",  width: 50 },
+    { key: "gp", label: "GP", width: 44 },
+    { key: "min", label: "MIN", width: 50 },
+    { key: "netRtg", label: "NET", width: 56 },
+    { key: "ortg", label: "ORTG", width: 54 },
+    { key: "drtg", label: "DRTG", width: 54 },
+    { key: "plusMinus", label: "+/-", width: 54 },
+    { key: "pts", label: "PPG", width: 50 },
+    { key: "fgPct", label: "FG%", width: 50 },
   ];
 
   const singleColumns = [
-    { key: "name",       label: "Player", width: "1fr", align: "left" },
-    { key: "gp",         label: "GP",  width: 44 },
-    { key: "mpg",        label: "MPG", width: 52 },
-    { key: "ppg",        label: "PPG", width: 52 },
-    { key: "rpg",        label: "RPG", width: 52 },
-    { key: "apg",        label: "APG", width: 52 },
-    { key: "fgPct",      label: "FG%", width: 54 },
-    { key: "plusMinus",  label: "+/-", width: 56 },
+    { key: "name", label: "Player", width: "1fr", align: "left" },
+    { key: "gp", label: "GP", width: 44 },
+    { key: "mpg", label: "MPG", width: 52 },
+    { key: "ppg", label: "PPG", width: 52 },
+    { key: "rpg", label: "RPG", width: 52 },
+    { key: "apg", label: "APG", width: 52 },
+    { key: "fgPct", label: "FG%", width: 54 },
+    { key: "plusMinus", label: "+/-", width: 56 },
   ];
 
   const columns = groupSize === 1 ? singleColumns : multiColumns;
@@ -4889,7 +5211,7 @@ function TeamDetailPage({ teamAbbr, onBack }) {
     let cancelled = false;
     fetchTeamGameLog(teamAbbr)
       .then((data) => { if (!cancelled && data) setLiveGameLog(data); })
-      .catch(() => {});
+      .catch(() => { });
     return () => { cancelled = true; };
   }, [teamAbbr, liveData.isLive]);
 
@@ -5072,18 +5394,18 @@ function TeamDetailPage({ teamAbbr, onBack }) {
       {/* ===== ROSTER TABLE ===== */}
       {roster.length > 0 && (() => {
         const ROSTER_COLS = [
-          { key: "name",   label: "Player", numeric: false },
-          { key: "pos",    label: "Pos",    numeric: false },
-          { key: "jersey", label: "#",      numeric: true  },
-          { key: "gp",     label: "GP",     numeric: true  },
-          { key: "mpg",    label: "MPG",    numeric: true  },
-          { key: "ppg",    label: "PPG",    numeric: true  },
-          { key: "rpg",    label: "RPG",    numeric: true  },
-          { key: "apg",    label: "APG",    numeric: true  },
-          { key: "spg",    label: "SPG",    numeric: true  },
-          { key: "bpg",    label: "BPG",    numeric: true  },
-          { key: "fgPct",  label: "FG%",    numeric: true  },
-          { key: "tpPct",  label: "3P%",    numeric: true  },
+          { key: "name", label: "Player", numeric: false },
+          { key: "pos", label: "Pos", numeric: false },
+          { key: "jersey", label: "#", numeric: true },
+          { key: "gp", label: "GP", numeric: true },
+          { key: "mpg", label: "MPG", numeric: true },
+          { key: "ppg", label: "PPG", numeric: true },
+          { key: "rpg", label: "RPG", numeric: true },
+          { key: "apg", label: "APG", numeric: true },
+          { key: "spg", label: "SPG", numeric: true },
+          { key: "bpg", label: "BPG", numeric: true },
+          { key: "fgPct", label: "FG%", numeric: true },
+          { key: "tpPct", label: "3P%", numeric: true },
         ];
         const sortedRoster = [...roster].sort((a, b) => {
           const av = parseFloat(a[rosterSort] ?? 0);
@@ -5212,7 +5534,7 @@ function GameDetailPage({ gameId, onBack, fallbackGame = null }) {
     clearEndpointCache("boxscoretraditionalv3");
     fetchBoxScore(gameId, game.homeTeam, game.awayTeam)
       .then((data) => { if (!cancelled && data) setLiveBoxScore(data); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => { if (!cancelled) setBoxScoreLoading(false); });
     return () => { cancelled = true; };
   }, [gameId, game?.status, mockDetail]);
@@ -5998,8 +6320,8 @@ function StandingsPage() {
                       color: isStreakHot
                         ? "var(--accent-green)"
                         : isStreakCold
-                        ? "var(--accent-red)"
-                        : "var(--text-secondary)",
+                          ? "var(--accent-red)"
+                          : "var(--text-secondary)",
                     }}
                   >
                     {row.streak}
@@ -6048,8 +6370,8 @@ function StandingsPage() {
                         diffNum > 0
                           ? "var(--accent-green)"
                           : diffNum < 0
-                          ? "var(--accent-red)"
-                          : "var(--text-secondary)",
+                            ? "var(--accent-red)"
+                            : "var(--text-secondary)",
                     }}
                   >
                     {row.diff}
@@ -6094,142 +6416,142 @@ function StandingsPage() {
     // Render only the selected division
     return (
       <div key={div} style={{ marginBottom: 24 }}>
-          <h3
-            className="font-display"
-            style={{
-              fontSize: 15,
-              fontWeight: 700,
-              marginBottom: 10,
-              color: "var(--text-primary)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <Shield size={14} style={{ color: "var(--accent-blue)" }} />
-            {div} Division
-          </h3>
+        <h3
+          className="font-display"
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            marginBottom: 10,
+            color: "var(--text-primary)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <Shield size={14} style={{ color: "var(--accent-blue)" }} />
+          {div} Division
+        </h3>
+        <div
+          style={{
+            background: "var(--bg-secondary)",
+            borderRadius: 10,
+            border: "1px solid var(--border-color)",
+            overflow: "hidden",
+          }}
+        >
+          {/* Header */}
           <div
             style={{
-              background: "var(--bg-secondary)",
-              borderRadius: 10,
-              border: "1px solid var(--border-color)",
-              overflow: "hidden",
+              display: "grid",
+              gridTemplateColumns: gridTemplate,
+              padding: "8px 16px",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--text-muted)",
+              borderBottom: "1px solid var(--border-color)",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              userSelect: "none",
             }}
           >
-            {/* Header */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: gridTemplate,
-                padding: "8px 16px",
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--text-muted)",
-                borderBottom: "1px solid var(--border-color)",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                userSelect: "none",
-              }}
-            >
-              {columns.map((col) => (
-                <span
-                  key={col.key}
-                  className={col.key !== "team" ? "stat-number" : ""}
-                  onClick={() =>
-                    col.key !== "rank" &&
-                    handleSort(col.key === "team" ? "wins" : col.key)
-                  }
-                  style={{
-                    textAlign: col.align,
-                    cursor: col.key !== "rank" ? "pointer" : "default",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent:
-                      col.align === "left" ? "flex-start" : "center",
-                    color:
-                      sortConfig.key === col.key ||
+            {columns.map((col) => (
+              <span
+                key={col.key}
+                className={col.key !== "team" ? "stat-number" : ""}
+                onClick={() =>
+                  col.key !== "rank" &&
+                  handleSort(col.key === "team" ? "wins" : col.key)
+                }
+                style={{
+                  textAlign: col.align,
+                  cursor: col.key !== "rank" ? "pointer" : "default",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent:
+                    col.align === "left" ? "flex-start" : "center",
+                  color:
+                    sortConfig.key === col.key ||
                       (col.key === "team" && sortConfig.key === "wins")
-                        ? "var(--accent-blue)"
-                        : undefined,
-                  }}
-                >
-                  {col.label}
-                  <SortIcon colKey={col.key === "team" ? "wins" : col.key} />
-                </span>
-              ))}
-            </div>
-            {/* Rows */}
-            {teams.map((row, idx) => {
-              const team = TEAMS[row.team] || { name: row.team, city: row.team, color: "#555", division: "" };
-              const streak = row.streak || "—";
-              const gamesPlayed = row.wins + row.losses;
-              const winPace = gamesPlayed > 0 ? Math.round(
-                (row.wins / gamesPlayed) * TOTAL_GAMES
-              ) : 0;
-              const isStreakHot =
-                streak.startsWith("W") &&
-                parseInt(streak.slice(1)) >= 3;
-              const isStreakCold =
-                streak.startsWith("L") &&
-                parseInt(streak.slice(1)) >= 3;
-              const diffNum = parseFloat(row.diff);
-
-              return (
-                <div
-                  key={row.team}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: gridTemplate,
-                    padding: "9px 16px",
-                    fontSize: 13,
-                    borderBottom:
-                      idx < teams.length - 1
-                        ? "1px solid var(--border-color)"
-                        : "none",
-                    alignItems: "center",
-                    transition: "background 0.15s",
-                    cursor: "default",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "var(--bg-hover)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = "transparent")
-                  }
-                >
-                  <span
-                    className="stat-number"
-                    style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}
-                  >
-                    {idx + 1}
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <TeamLogo abbr={row.team} size={24} />
-                    <span style={{ fontWeight: 500, fontSize: 13 }}>
-                      {team.city} {team.name}
-                    </span>
-                    {isStreakHot && (
-                      <Flame size={12} style={{ color: "var(--accent-amber)", flexShrink: 0 }} />
-                    )}
-                  </div>
-                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: "var(--accent-green)" }}>{row.wins}</span>
-                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: "var(--accent-red)" }}>{row.losses}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{row.pct}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-muted)" }}>{row.gb}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.home}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.away}</span>
-                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, fontSize: 12, color: isStreakHot ? "var(--accent-green)" : isStreakCold ? "var(--accent-red)" : "var(--text-secondary)" }}>{row.streak}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.last10}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.ppg.toFixed(1)}</span>
-                  <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.oppPpg.toFixed(1)}</span>
-                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, fontSize: 12, color: diffNum > 0 ? "var(--accent-green)" : diffNum < 0 ? "var(--accent-red)" : "var(--text-secondary)" }}>{row.diff}</span>
-                  <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, fontSize: 12, color: winPace >= 50 ? "var(--accent-blue)" : "var(--text-muted)" }}>{winPace}</span>
-                </div>
-              );
-            })}
+                      ? "var(--accent-blue)"
+                      : undefined,
+                }}
+              >
+                {col.label}
+                <SortIcon colKey={col.key === "team" ? "wins" : col.key} />
+              </span>
+            ))}
           </div>
+          {/* Rows */}
+          {teams.map((row, idx) => {
+            const team = TEAMS[row.team] || { name: row.team, city: row.team, color: "#555", division: "" };
+            const streak = row.streak || "—";
+            const gamesPlayed = row.wins + row.losses;
+            const winPace = gamesPlayed > 0 ? Math.round(
+              (row.wins / gamesPlayed) * TOTAL_GAMES
+            ) : 0;
+            const isStreakHot =
+              streak.startsWith("W") &&
+              parseInt(streak.slice(1)) >= 3;
+            const isStreakCold =
+              streak.startsWith("L") &&
+              parseInt(streak.slice(1)) >= 3;
+            const diffNum = parseFloat(row.diff);
+
+            return (
+              <div
+                key={row.team}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: gridTemplate,
+                  padding: "9px 16px",
+                  fontSize: 13,
+                  borderBottom:
+                    idx < teams.length - 1
+                      ? "1px solid var(--border-color)"
+                      : "none",
+                  alignItems: "center",
+                  transition: "background 0.15s",
+                  cursor: "default",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "var(--bg-hover)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                <span
+                  className="stat-number"
+                  style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}
+                >
+                  {idx + 1}
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <TeamLogo abbr={row.team} size={24} />
+                  <span style={{ fontWeight: 500, fontSize: 13 }}>
+                    {team.city} {team.name}
+                  </span>
+                  {isStreakHot && (
+                    <Flame size={12} style={{ color: "var(--accent-amber)", flexShrink: 0 }} />
+                  )}
+                </div>
+                <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: "var(--accent-green)" }}>{row.wins}</span>
+                <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, color: "var(--accent-red)" }}>{row.losses}</span>
+                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)" }}>{row.pct}</span>
+                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-muted)" }}>{row.gb}</span>
+                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.home}</span>
+                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.away}</span>
+                <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, fontSize: 12, color: isStreakHot ? "var(--accent-green)" : isStreakCold ? "var(--accent-red)" : "var(--text-secondary)" }}>{row.streak}</span>
+                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.last10}</span>
+                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.ppg.toFixed(1)}</span>
+                <span className="stat-number" style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>{row.oppPpg.toFixed(1)}</span>
+                <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, fontSize: 12, color: diffNum > 0 ? "var(--accent-green)" : diffNum < 0 ? "var(--accent-red)" : "var(--text-secondary)" }}>{row.diff}</span>
+                <span className="stat-number" style={{ textAlign: "center", fontWeight: 600, fontSize: 12, color: winPace >= 50 ? "var(--accent-blue)" : "var(--text-muted)" }}>{winPace}</span>
+              </div>
+            );
+          })}
         </div>
+      </div>
     );
   };
 
@@ -6370,6 +6692,12 @@ function StandingsPage() {
 // --- Home Page ---
 function HomePage({ onGameClick, onPlayerClick, onNavigate }) {
   const liveData = useLiveData();
+  const [tickerItems, setTickerItems] = useState([]);
+
+  useEffect(() => {
+    fetchTickerData().then(setTickerItems).catch(() => { });
+  }, []);
+
   const sortedGames = useMemo(() => {
     const order = { LIVE: 0, FINAL: 1, UPCOMING: 2 };
     return [...liveData.scoreboard].sort(
@@ -6379,8 +6707,8 @@ function HomePage({ onGameClick, onPlayerClick, onNavigate }) {
 
   return (
     <div className="fade-in" style={{ paddingBottom: 40 }}>
-      {/* News Ticker */}
-      <NewsTicker headlines={mockData.headlines || []} />
+      {/* Score Ticker */}
+      <NewsTicker items={tickerItems} />
 
       {/* Scoreboard Ticker */}
       <div style={{ padding: "24px 0" }}>
@@ -6531,7 +6859,7 @@ function LiveDataProvider({ children }) {
               clearEndpointCache("scoreboardv3");
               const fresh = await fetchScoreboard();
               if (!cancelled && fresh.length > 0) setLiveScoreboard(fresh);
-            } catch {}
+            } catch { }
           }, 30000);
         }
       } else if (scoreboardRes.status === "rejected") {
@@ -6719,6 +7047,8 @@ function CourtsideAppInner() {
         );
       case "predictions":
         return <PredictionsPage />;
+      case "about":
+        return <AboutPage />;
       case "gameDetail":
         return (
           <GameDetailPage
