@@ -1479,8 +1479,8 @@ function PredictionsPage() {
       );
     }
 
-    const upsets = predictions.filter((p) => p.upset_alert);
-    const regular = predictions.filter((p) => !p.upset_alert);
+    const upsets = predictions.filter((p) => p.upsetAlert);
+    const regular = predictions.filter((p) => !p.upsetAlert);
 
     return (
       <>
@@ -1510,13 +1510,13 @@ function PredictionsPage() {
             <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
               <Flame size={16} style={{ color: "#f59e0b" }} /> Upset Watch
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {upsets.map((p, i) => renderPredictionCard(p, i, true))}
             </div>
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {regular.map((p, i) => renderPredictionCard(p, i, false))}
         </div>
       </>
@@ -1524,10 +1524,12 @@ function PredictionsPage() {
   };
 
   const renderPredictionCard = (p, i, isUpset) => {
-    const homeTeam = TEAMS[p.home_team] || {};
-    const awayTeam = TEAMS[p.away_team] || {};
+    const homeTeam = TEAMS[p.homeTeam] || {};
+    const awayTeam = TEAMS[p.awayTeam] || {};
+    // playerProps already parsed by server; handle both string and array
     let props = [];
-    try { props = p.player_props ? JSON.parse(p.player_props) : []; } catch {}
+    try { props = Array.isArray(p.playerProps) ? p.playerProps : JSON.parse(p.playerProps || "[]"); } catch {}
+    const confidencePct = p.confidence <= 1 ? Math.round(p.confidence * 100) : p.confidence;
 
     return (
       <div
@@ -1547,28 +1549,28 @@ function PredictionsPage() {
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 12 }}>
           <div style={{ textAlign: "center" }}>
-            <TeamLogo abbr={p.away_team} size={36} />
-            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{p.away_team}</div>
+            <TeamLogo abbr={p.awayTeam} size={36} />
+            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{p.awayTeam}</div>
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{awayTeam.city || ""}</div>
           </div>
 
           <div style={{ textAlign: "center" }}>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 700 }}>
-              {p.away_score_pred ?? "?"} — {p.home_score_pred ?? "?"}
+              {p.awayScorePred ?? "?"} — {p.homeScorePred ?? "?"}
             </div>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>predicted</div>
           </div>
 
           <div style={{ textAlign: "center" }}>
-            <TeamLogo abbr={p.home_team} size={36} />
-            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{p.home_team}</div>
+            <TeamLogo abbr={p.homeTeam} size={36} />
+            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{p.homeTeam}</div>
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{homeTeam.city || ""}</div>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>
-            {p.predicted_winner} wins
+            {p.predictedWinner} wins
           </span>
           <span
             style={{
@@ -1579,15 +1581,15 @@ function PredictionsPage() {
               borderRadius: 6,
             }}
           >
-            spread: {p.predicted_spread != null ? (p.predicted_spread > 0 ? `+${p.predicted_spread}` : p.predicted_spread) : "—"}
+            spread: {p.spread != null ? (p.spread > 0 ? `+${p.spread}` : p.spread) : "—"}
           </span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
           <span style={{ color: "var(--text-muted)" }}>Confidence</span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{p.confidence ?? 0}%</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{confidencePct}%</span>
         </div>
-        {renderConfidenceBar(p.confidence ?? 0)}
+        {renderConfidenceBar(confidencePct)}
 
         {p.reasoning && (
           <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 10, lineHeight: 1.5 }}>
@@ -1601,7 +1603,7 @@ function PredictionsPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
               {props.slice(0, 4).map((pp, j) => (
                 <div key={j} style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>
-                  <span style={{ color: "var(--text-secondary)" }}>{pp.name}: </span>
+                  <span style={{ color: "var(--text-secondary)" }}>{pp.playerName || pp.name}: </span>
                   <span style={{ fontWeight: 600 }}>
                     {pp.pts != null ? `${pp.pts}p` : ""} {pp.reb != null ? `${pp.reb}r` : ""} {pp.ast != null ? `${pp.ast}a` : ""}
                   </span>
@@ -1616,9 +1618,12 @@ function PredictionsPage() {
 
   const renderResultsTab = () => {
     if (!historyData) return null;
-    const { days } = historyData;
+    // API returns { date: [results] } object — convert to sorted array
+    const days = Object.entries(historyData)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([date, results]) => ({ date, results }));
 
-    if (!days || days.length === 0) {
+    if (days.length === 0) {
       return (
         <div className="card-hover" style={{ padding: 32, textAlign: "center" }}>
           <Info size={40} style={{ color: "var(--text-muted)", marginBottom: 12 }} />
@@ -1631,7 +1636,7 @@ function PredictionsPage() {
     return (
       <>
         {days.map((day) => {
-          const correct = day.results.filter((r) => r.correct === 1).length;
+          const correct = day.results.filter((r) => r.correct).length;
           const total = day.results.length;
           const pct = total > 0 ? ((correct / total) * 100).toFixed(1) : 0;
           return (
@@ -1658,38 +1663,38 @@ function PredictionsPage() {
                     className="card-hover"
                     style={{
                       padding: 16,
-                      borderLeft: `3px solid ${r.correct === 1 ? "#22c55e" : "#ef4444"}`,
+                      borderLeft: `3px solid ${r.correct ? "#22c55e" : "#ef4444"}`,
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <TeamLogo abbr={r.away_team} size={24} />
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{r.away_team}</span>
+                        <TeamLogo abbr={r.awayTeam} size={24} />
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{r.awayTeam}</span>
                         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>@</span>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{r.home_team}</span>
-                        <TeamLogo abbr={r.home_team} size={24} />
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{r.homeTeam}</span>
+                        <TeamLogo abbr={r.homeTeam} size={24} />
                       </div>
-                      <span style={{ fontSize: 16 }}>{r.correct === 1 ? "✓" : "✗"}</span>
+                      <span style={{ fontSize: 16 }}>{r.correct ? "✓" : "✗"}</span>
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
                       <div>
                         <div style={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}>Predicted</div>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
-                          {r.predicted_winner} · {r.away_score_pred}-{r.home_score_pred}
+                          {r.predictedWinner} · {r.awayScorePred}-{r.homeScorePred}
                         </span>
                       </div>
                       <div>
                         <div style={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}>Actual</div>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
-                          {r.actual_winner || "?"} · {r.away_score_actual ?? "?"}-{r.home_score_actual ?? "?"}
+                          {r.actualWinner || "?"} · {r.awayScoreActual ?? "?"}-{r.homeScoreActual ?? "?"}
                         </span>
                       </div>
                     </div>
 
-                    {r.spread_error != null && (
+                    {r.spreadError != null && (
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, fontFamily: "'JetBrains Mono', monospace" }}>
-                        Spread error: {Math.abs(r.spread_error).toFixed(1)} pts
+                        Spread error: {Math.abs(r.spreadError).toFixed(1)} pts
                       </div>
                     )}
                   </div>
@@ -3344,6 +3349,7 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
   const [liveGameLog, setLiveGameLog] = useState(null);
   const [rollingWindow, setRollingWindow] = useState(5);
   const [activeTooltip, setActiveTooltip] = useState(null);
+  const [archetypeLabel, setArchetypeLabel] = useState(null);
 
   // For live-only players, fetch their game log
   useEffect(() => {
@@ -3354,6 +3360,22 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
     }).catch(() => { if (!cancelled) setLiveGameLog([]); });
     return () => { cancelled = true; };
   }, [livePlayerData?.nbaId, mockPlayer]);
+
+  // Fetch archetype label from player_profiles
+  useEffect(() => {
+    const nbaId = mockPlayer?.nbaId || livePlayerData?.nbaId;
+    if (!nbaId) return;
+    let cancelled = false;
+    fetch(`/api/db/player-profiles?playerId=${nbaId}`)
+      .then((r) => r.json())
+      .then((rows) => {
+        if (!cancelled && rows?.[0]?.archetypeLabel) {
+          setArchetypeLabel(rows[0].archetypeLabel);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [mockPlayer?.nbaId, livePlayerData?.nbaId]);
 
   // Build a synthetic player object for live-only players
   const player = mockPlayer || (livePlayerData ? {
@@ -3491,6 +3513,22 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
               <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800 }}>{player.name}</h1>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: team.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "white" }}>{player.team}</div>
+              {archetypeLabel && (
+                <div style={{
+                  background: "rgba(249,115,22,0.15)",
+                  border: "1px solid rgba(249,115,22,0.4)",
+                  borderRadius: 20,
+                  padding: "3px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--accent)",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {archetypeLabel.replace(/_/g, " ")}
+                </div>
+              )}
             </div>
             <div style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 16 }}>
               {team.city} {team.name} · {player.pos}{player.jersey != null ? ` · #${player.jersey}` : ""}
