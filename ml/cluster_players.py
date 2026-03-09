@@ -1,387 +1,424 @@
 """
-cluster_players.py - K-means player archetype clustering
+cluster_players.py — Fuzzy archetype classifier for NBA players
 
-Reads player_profiles + position data from .data/courtside.db, clusters
-players into basketball-specific archetypes, and writes archetype +
-archetype_label back to player_profiles.
+Assigns each player a membership score (0.0–1.0) across 13 archetypes.
+Scores are normalised to sum ≈ 1.0.  The primary archetype is the one
+with the highest score.
 
-Two-phase labeling:
-  1. Cluster centroids get a base label from stat rules
-  2. Individual players get position-adjusted labels
-     (e.g., a LEAD_GUARD listed as F -> POINT_FORWARD)
-
-Final archetypes:
-  Guards:  LEAD_GUARD, SCORING_GUARD, OVERSIZED_PLAYMAKER, ROLE_GUARD,
-           TWO_WAY_GUARD, 3_AND_D_GUARD
-  Wings:   TWO_WAY_WING, SHOT_CREATING_WING, 3_AND_D_WING
-  Bigs:    PAINT_BEAST, ANCHOR_BIG
-  Hybrid:  POINT_FORWARD
-  Other:   ROLE_PLAYER
+Data sources (SQLite):
+  player_profiles  — advanced stats, touches, drives, hustle
+  players          — position, ppg, rpg, apg, spg, bpg, tp_pct
+  player_game_logs — fg3a/fga to derive 3PA rate
 
 Usage:
-    python ml/cluster_players.py               # cluster + write to DB
-    python ml/cluster_players.py --dry-run     # print results, don't write
-    python ml/cluster_players.py --k 8         # override cluster count
-
-Dependencies:
-    pip install scikit-learn pandas numpy
+    python ml/cluster_players.py              # classify + write to DB
+    python ml/cluster_players.py --dry-run    # print results, don't write
 """
 
 import argparse
 import io
+import json
 import sqlite3
 import sys
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-from sklearn.cluster import KMeans
-from sklearn.impute import SimpleImputer
-from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
-
-# Fix Windows console encoding for accented player names
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+# Windows UTF-8 fix
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 DB_PATH = Path(__file__).parent.parent / ".data" / "courtside.db"
 
-# ---------------------------------------------------------------------------
-# Feature sets
-# ---------------------------------------------------------------------------
+# ── The 13 archetypes ────────────────────────────────────────────────────────
 
-STAT_FEATURES = [
-    "usg_pct",           # offensive role / ball dominance
-    "ts_pct",            # shooting efficiency
-    "ast_pct",           # playmaking
-    "ast_to",            # passing quality (assist-to-turnover)
-    "oreb_pct",          # offensive rebounding
-    "dreb_pct",          # defensive rebounding
-    "contested_shots",   # rim protection / contesting
-    "deflections",       # defensive activity
-    "screen_assists",    # screen-based play (big man indicator)
-    "net_rating",        # overall impact
+ARCHETYPES = [
+    "floor_general",
+    "scoring_pg",
+    "combo_guard",
+    "large_playmaker",
+    "three_and_d_wing",
+    "two_way_wing",
+    "shot_creating_wing",
+    "point_wing",
+    "stretch_big",
+    "unicorn_big",
+    "rim_running_big",
+    "defensive_anchor",
+    "versatile_pf",
 ]
 
-POSITION_FEATURES = ["is_guard", "is_wing", "is_big"]
-ALL_FEATURES = STAT_FEATURES + POSITION_FEATURES
-
-# ---------------------------------------------------------------------------
-# Position encoding
-# ---------------------------------------------------------------------------
-
-POSITION_ENCODING = {
-    "G":   {"is_guard": 1.0, "is_wing": 0.0, "is_big": 0.0},
-    "G-F": {"is_guard": 0.7, "is_wing": 0.5, "is_big": 0.0},
-    "F-G": {"is_guard": 0.5, "is_wing": 0.7, "is_big": 0.0},
-    "F":   {"is_guard": 0.0, "is_wing": 1.0, "is_big": 0.0},
-    "F-C": {"is_guard": 0.0, "is_wing": 0.5, "is_big": 0.5},
-    "C-F": {"is_guard": 0.0, "is_wing": 0.3, "is_big": 0.7},
-    "C":   {"is_guard": 0.0, "is_wing": 0.0, "is_big": 1.0},
+DISPLAY = {
+    "floor_general":      "Floor General",
+    "scoring_pg":         "Scoring PG",
+    "combo_guard":        "Combo Guard",
+    "large_playmaker":    "Large Playmaker",
+    "three_and_d_wing":   "3-and-D Wing",
+    "two_way_wing":       "Two-Way Wing",
+    "shot_creating_wing": "Shot-Creating Wing",
+    "point_wing":         "Point Wing",
+    "stretch_big":        "Stretch Big",
+    "unicorn_big":        "Unicorn Big",
+    "rim_running_big":    "Rim-Running Big",
+    "defensive_anchor":   "Defensive Anchor",
+    "versatile_pf":       "Versatile PF",
 }
 
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
-def encode_position(pos_str, row=None):
-    """Convert NBA position string to numeric features."""
-    pos = (pos_str or "").strip().upper()
-    if pos in POSITION_ENCODING:
-        return POSITION_ENCODING[pos]
-    # Infer from stats for empty/unknown positions
-    if row is not None:
-        dreb = row.get("dreb_pct", 0) or 0
-        oreb = row.get("oreb_pct", 0) or 0
-        ast = row.get("ast_pct", 0) or 0
-        if dreb > 0.15 or oreb > 0.06:
-            return {"is_guard": 0.0, "is_wing": 0.2, "is_big": 0.8}
-        if ast > 0.25:
-            return {"is_guard": 0.8, "is_wing": 0.2, "is_big": 0.0}
-        return {"is_guard": 0.2, "is_wing": 0.6, "is_big": 0.2}
-    return {"is_guard": 0.33, "is_wing": 0.34, "is_big": 0.33}
+def _v(x, default=0.0):
+    """Return x if not None, else default."""
+    return x if x is not None else default
 
 
-# ---------------------------------------------------------------------------
-# Phase 1: Centroid-based archetype rules
-# Evaluated in order against un-scaled centroids. First full match wins.
-# ---------------------------------------------------------------------------
-
-ARCHETYPE_RULES = [
-    # Bigs (check first - most positionally distinct)
-    ("PAINT_BEAST", {
-        "is_big": (0.4, None),
-        "contested_shots": (5.0, None),
-    }),
-    ("ANCHOR_BIG", {
-        "is_big": (0.4, None),
-        "contested_shots": (3.0, None),
-    }),
-
-    # Guards
-    ("LEAD_GUARD", {
-        "is_guard": (0.5, None),
-        "ast_pct": (0.20, None),
-    }),
-    ("SCORING_GUARD", {
-        "is_guard": (0.5, None),
-        "usg_pct": (0.18, None),
-    }),
-    ("ROLE_GUARD", {
-        "is_guard": (0.5, None),
-    }),
-
-    # Wings
-    ("TWO_WAY_WING", {
-        "is_wing": (0.4, None),
-        "usg_pct": (0.18, None),
-        "contested_shots": (3.5, None),
-    }),
-    ("3_AND_D_WING", {
-        "is_wing": (0.4, None),
-        "usg_pct": (None, 0.18),
-    }),
-    ("SHOT_CREATING_WING", {
-        "is_wing": (0.3, None),
-        "usg_pct": (0.18, None),
-    }),
-]
+def scale(x, lo, hi):
+    """Linear scale x from [lo, hi] → [0, 1], clamped."""
+    if x is None:
+        return 0.0
+    if hi <= lo:
+        return 0.0
+    return max(0.0, min(1.0, (x - lo) / (hi - lo)))
 
 
-def label_centroid(centroid):
-    """Assign a base archetype label to a cluster centroid."""
-    for label, rules in ARCHETYPE_RULES:
-        match = True
-        for feat, (lo, hi) in rules.items():
-            val = centroid.get(feat)
-            if val is None:
-                match = False
-                break
-            if lo is not None and val < lo:
-                match = False
-                break
-            if hi is not None and val > hi:
-                match = False
-                break
-        if match:
-            return label
-    return "ROLE_PLAYER"
+def inv(x, lo, hi):
+    """Inverse scale: 1.0 at lo, 0.0 at hi."""
+    return 1.0 - scale(x, lo, hi)
 
 
-# ---------------------------------------------------------------------------
-# Phase 2: Per-player position overrides
-# When a player's listed position doesn't match their cluster's archetype,
-# re-label to a more accurate type.
-#
-# Example: Luka Doncic (F-G) clusters with guards due to high AST%/USG%
-#          -> override from LEAD_GUARD to POINT_FORWARD
-# ---------------------------------------------------------------------------
-
-POSITION_OVERRIDES = {
-    # Forwards/bigs who play like lead guards = Point Forward
-    ("LEAD_GUARD", "F"):    "POINT_FORWARD",
-    ("LEAD_GUARD", "F-G"):  "POINT_FORWARD",
-    ("LEAD_GUARD", "F-C"):  "POINT_FORWARD",
-    ("LEAD_GUARD", "C"):    "POINT_FORWARD",
-    ("LEAD_GUARD", "C-F"):  "POINT_FORWARD",
-    # Big guards (G-F) with elite playmaking = Oversized Playmaker
-    ("LEAD_GUARD", "G-F"):  "OVERSIZED_PLAYMAKER",
-
-    # Forwards with scoring-guard style = Shot Creating Wing
-    ("SCORING_GUARD", "F"):    "SHOT_CREATING_WING",
-    ("SCORING_GUARD", "F-G"):  "SHOT_CREATING_WING",
-    ("SCORING_GUARD", "F-C"):  "SHOT_CREATING_WING",
-
-    # Guards in wing-defined clusters
-    ("TWO_WAY_WING", "G"):    "TWO_WAY_GUARD",
-    ("TWO_WAY_WING", "G-F"):  "TWO_WAY_GUARD",
-    ("3_AND_D_WING", "G"):    "3_AND_D_GUARD",
-    ("3_AND_D_WING", "G-F"):  "3_AND_D_GUARD",
-    ("SHOT_CREATING_WING", "G"):    "SCORING_GUARD",
-    ("SHOT_CREATING_WING", "G-F"):  "SCORING_GUARD",
-}
-
-
-def apply_position_override(base_label, pos):
-    """Adjust archetype label based on individual player position."""
+def pos_weights(pos):
+    """Soft positional weights from listed NBA position."""
     pos = (pos or "").strip().upper()
-    return POSITION_OVERRIDES.get((base_label, pos), base_label)
+    return {
+        "G":   {"guard": 1.0, "big_guard": 0.0, "wing": 0.0, "forward": 0.0, "big": 0.0},
+        "G-F": {"guard": 0.6, "big_guard": 1.0, "wing": 0.5, "forward": 0.0, "big": 0.0},
+        "F-G": {"guard": 0.3, "big_guard": 0.7, "wing": 0.8, "forward": 0.5, "big": 0.0},
+        "F":   {"guard": 0.0, "big_guard": 0.0, "wing": 0.8, "forward": 1.0, "big": 0.3},
+        "F-C": {"guard": 0.0, "big_guard": 0.0, "wing": 0.2, "forward": 0.7, "big": 0.8},
+        "C-F": {"guard": 0.0, "big_guard": 0.0, "wing": 0.1, "forward": 0.4, "big": 0.9},
+        "C":   {"guard": 0.0, "big_guard": 0.0, "wing": 0.0, "forward": 0.1, "big": 1.0},
+    }.get(pos, {"guard": 0.3, "big_guard": 0.3, "wing": 0.4, "forward": 0.3, "big": 0.3})
 
 
-# ---------------------------------------------------------------------------
-# Clustering
-# ---------------------------------------------------------------------------
+# ── Scoring functions ────────────────────────────────────────────────────────
+# Each returns a raw 0-1 affinity. Position is a soft factor (~15-25% weight).
 
-def find_best_k(X_scaled, k_range):
-    """Use silhouette score to pick best k."""
-    scores = {}
-    for k in k_range:
-        km = KMeans(n_clusters=k, random_state=42, n_init=10)
-        labels = km.fit_predict(X_scaled)
-        scores[k] = silhouette_score(X_scaled, labels)
-        print(f"  k={k}  silhouette={scores[k]:.4f}")
-    best_k = max(scores, key=scores.get)
-    print(f"  -> Best k: {best_k} (silhouette={scores[best_k]:.4f})")
-    return best_k
+def _floor_general(p, w):
+    pos   = w["guard"] * 0.7 + w["big_guard"] * 0.3
+    ast   = scale(p["ast_pct"], 15, 40)
+    pases = scale(p["passes_made"], 30, 65)
+    pot   = scale(p["potential_ast"], 5, 15)
+    usg   = inv(p["usg_pct"], 18, 32)     # moderate, not a volume scorer
+    ppg   = inv(p["ppg"], 22, 33)
+    return pos * 0.20 + ast * 0.25 + pases * 0.15 + pot * 0.15 + usg * 0.15 + ppg * 0.10
 
+
+def _scoring_pg(p, w):
+    pos   = w["guard"] * 0.8 + w["big_guard"] * 0.5
+    usg   = scale(p["usg_pct"], 23, 35)
+    ppg   = scale(p["ppg"], 20, 33)
+    drv   = scale(p["drives"], 8, 20)
+    ast   = scale(p["ast_pct"], 8, 28)     # secondary playmaking
+    ts    = scale(p["ts_pct"], 52, 65)
+    return pos * 0.15 + usg * 0.25 + ppg * 0.20 + drv * 0.15 + ast * 0.10 + ts * 0.15
+
+
+def _combo_guard(p, w):
+    pos   = w["guard"] * 0.7 + w["big_guard"] * 0.5
+    usg_m = 1.0 - abs(scale(p["usg_pct"], 10, 35) - 0.4) * 2.0
+    usg_m = max(0.0, min(1.0, usg_m))
+    ast   = scale(p["ast_pct"], 8, 22)
+    defen = scale(p["deflections"], 1.0, 3.5) * 0.4 + scale(p["contested_shots"], 3, 12) * 0.3 + scale(p["spg"], 0.8, 2.0) * 0.3
+    mod   = inv(p["ppg"], 24, 33) * 0.5 + inv(p["ast_pct"], 28, 40) * 0.5
+    return pos * 0.15 + usg_m * 0.15 + ast * 0.15 + defen * 0.35 + mod * 0.20
+
+
+def _large_playmaker(p, w):
+    # SGA / Luka / LeBron type: 6'5"+ primary handler, size + creation
+    pos   = w["big_guard"] * 0.5 + w["wing"] * 0.5 + w["forward"] * 0.3 + w["big"] * 0.2 + w["guard"] * 0.3
+    pos   = min(1.0, pos)
+    usg   = scale(p["usg_pct"], 25, 35)
+    ast   = scale(p["ast_pct"], 15, 38)
+    ppg   = scale(p["ppg"], 20, 33)
+    drv   = scale(p["drives"], 8, 18)
+    touch = scale(p["touches"], 55, 90)
+    return pos * 0.15 + usg * 0.20 + ast * 0.20 + ppg * 0.15 + drv * 0.15 + touch * 0.15
+
+
+def _three_and_d_wing(p, w):
+    pos   = w["wing"] * 0.5 + w["guard"] * 0.4 + w["forward"] * 0.3 + w["big_guard"] * 0.4
+    pos   = min(1.0, pos)
+    lo_u  = inv(p["usg_pct"], 12, 22)
+    t3r   = scale(p["fg3a_rate"], 0.30, 0.60)
+    t3p   = scale(p["tp_pct"], 33, 42)
+    defen = scale(p["deflections"], 1.0, 3.5) * 0.4 + scale(p["contested_shots"], 3, 12) * 0.6
+    lo_a  = inv(p["ast_pct"], 8, 20)
+    return pos * 0.10 + lo_u * 0.20 + t3r * 0.20 + t3p * 0.10 + defen * 0.30 + lo_a * 0.10
+
+
+def _two_way_wing(p, w):
+    pos   = w["wing"] * 0.6 + w["big_guard"] * 0.5 + w["forward"] * 0.4
+    pos   = min(1.0, pos)
+    usg   = scale(p["usg_pct"], 20, 32)
+    ppg   = scale(p["ppg"], 16, 28)
+    defen = (scale(p["deflections"], 1.0, 3.5) * 0.3
+           + scale(p["contested_shots"], 4, 12) * 0.3
+           + scale(p["spg"], 0.8, 2.0) * 0.2
+           + scale(p["bpg"], 0.3, 1.5) * 0.2)
+    ts    = scale(p["ts_pct"], 54, 64)
+    return pos * 0.10 + usg * 0.20 + ppg * 0.20 + defen * 0.35 + ts * 0.15
+
+
+def _shot_creating_wing(p, w):
+    pos   = w["wing"] * 0.6 + w["big_guard"] * 0.4 + w["forward"] * 0.4
+    pos   = min(1.0, pos)
+    usg   = scale(p["usg_pct"], 24, 34)
+    ppg   = scale(p["ppg"], 18, 30)
+    drv   = scale(p["drives"], 5, 15)
+    ts    = scale(p["ts_pct"], 52, 63)
+    lo_d  = inv(p["deflections"], 0.5, 2.5)
+    return pos * 0.10 + usg * 0.25 + ppg * 0.20 + drv * 0.15 + ts * 0.15 + lo_d * 0.15
+
+
+def _point_wing(p, w):
+    pos   = w["forward"] * 0.5 + w["wing"] * 0.5 + w["big_guard"] * 0.3 + w["big"] * 0.2
+    pos   = min(1.0, pos)
+    ast   = scale(p["ast_pct"], 15, 35)
+    pases = scale(p["passes_made"], 25, 55)
+    drv   = scale(p["drives"], 5, 14)
+    # moderate scoring, not elite
+    ppg_m = 1.0 - abs(scale(p["ppg"], 5, 30) - 0.45) * 1.5
+    ppg_m = max(0.0, min(1.0, ppg_m))
+    return pos * 0.20 + ast * 0.30 + pases * 0.15 + drv * 0.15 + ppg_m * 0.20
+
+
+def _stretch_big(p, w):
+    pos   = w["big"] * 0.6 + w["forward"] * 0.4
+    pos   = min(1.0, pos)
+    t3r   = scale(p["fg3a_rate"], 0.25, 0.55)
+    t3p   = scale(p["tp_pct"], 30, 40)
+    lo_po = inv(p["post_touches"], 2, 8)
+    lo_pa = inv(p["paint_touches"], 5, 12)
+    lo_u  = inv(p["usg_pct"], 15, 25)
+    return pos * 0.25 + t3r * 0.25 + t3p * 0.15 + lo_po * 0.15 + lo_pa * 0.10 + lo_u * 0.10
+
+
+def _unicorn_big(p, w):
+    pos   = w["big"] * 0.5 + w["forward"] * 0.4
+    pos   = min(1.0, pos)
+    usg   = scale(p["usg_pct"], 22, 33)
+    ppg   = scale(p["ppg"], 18, 30)
+    ast   = scale(p["ast_pct"], 8, 28)
+    ts    = scale(p["ts_pct"], 55, 67)
+    t3r   = scale(p["fg3a_rate"], 0.08, 0.30)
+    return pos * 0.20 + usg * 0.20 + ppg * 0.15 + ast * 0.20 + ts * 0.15 + t3r * 0.10
+
+
+def _rim_running_big(p, w):
+    pos   = w["big"] * 0.6 + w["forward"] * 0.3
+    pos   = min(1.0, pos)
+    lo_t3 = inv(p["fg3a_rate"], 0.02, 0.15)
+    paint = scale(p["paint_touches"], 5, 14)
+    scrn  = scale(p["screen_assists"], 2, 8)
+    lo_u  = inv(p["usg_pct"], 12, 22)
+    rpg   = scale(p["rpg"], 5, 12)
+    return pos * 0.20 + lo_t3 * 0.20 + paint * 0.20 + scrn * 0.15 + lo_u * 0.10 + rpg * 0.15
+
+
+def _defensive_anchor(p, w):
+    pos   = w["big"] * 0.6 + w["forward"] * 0.3
+    pos   = min(1.0, pos)
+    bpg   = scale(p["bpg"], 1.0, 3.5)
+    cont  = scale(p["contested_shots"], 5, 14)
+    lo_u  = inv(p["usg_pct"], 10, 20)
+    lo_p  = inv(p["ppg"], 8, 18)
+    rpg   = scale(p["rpg"], 6, 13)
+    return pos * 0.15 + bpg * 0.25 + cont * 0.20 + lo_u * 0.15 + lo_p * 0.10 + rpg * 0.15
+
+
+def _versatile_pf(p, w):
+    pos   = w["forward"] * 0.5 + w["big"] * 0.4 + w["wing"] * 0.2
+    pos   = min(1.0, pos)
+    t3r   = scale(p["fg3a_rate"], 0.15, 0.40)
+    bpg   = scale(p["bpg"], 0.5, 2.5)
+    spg   = scale(p["spg"], 0.4, 1.5)
+    dual  = bpg * 0.5 + spg * 0.5
+    allrd = scale(p["ppg"], 8, 20) * 0.3 + scale(p["rpg"], 4, 10) * 0.4 + scale(p["apg"], 1, 4) * 0.3
+    cont  = scale(p["contested_shots"], 3, 10)
+    return pos * 0.15 + t3r * 0.15 + dual * 0.25 + allrd * 0.20 + cont * 0.25
+
+
+SCORERS = {
+    "floor_general":      _floor_general,
+    "scoring_pg":         _scoring_pg,
+    "combo_guard":        _combo_guard,
+    "large_playmaker":    _large_playmaker,
+    "three_and_d_wing":   _three_and_d_wing,
+    "two_way_wing":       _two_way_wing,
+    "shot_creating_wing": _shot_creating_wing,
+    "point_wing":         _point_wing,
+    "stretch_big":        _stretch_big,
+    "unicorn_big":        _unicorn_big,
+    "rim_running_big":    _rim_running_big,
+    "defensive_anchor":   _defensive_anchor,
+    "versatile_pf":       _versatile_pf,
+}
+
+
+# ── Classification ───────────────────────────────────────────────────────────
+
+def classify(p):
+    """Return (scores_dict, primary_key) for one player dict."""
+    w = pos_weights(p.get("pos"))
+    raw = {name: fn(p, w) for name, fn in SCORERS.items()}
+
+    # Zero out noise
+    for k in raw:
+        if raw[k] < 0.02:
+            raw[k] = 0.0
+
+    total = sum(raw.values())
+    if total > 0:
+        norm = {k: round(v / total, 3) for k, v in raw.items()}
+    else:
+        norm = {k: 0.0 for k in raw}
+
+    primary = max(norm, key=norm.get)
+    return norm, primary
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Cluster NBA players into positional archetypes")
-    parser.add_argument("--dry-run", action="store_true", help="Print results, don't write to DB")
-    parser.add_argument("--k", type=int, default=None, help="Number of clusters (default: auto 6-10)")
+    parser = argparse.ArgumentParser(description="Fuzzy NBA archetype classifier")
+    parser.add_argument("--dry-run", action="store_true", help="Print results, don't write")
     args = parser.parse_args()
 
     if not DB_PATH.exists():
         print(f"ERROR: DB not found at {DB_PATH}", file=sys.stderr)
         sys.exit(1)
 
-    # -- Load data ----------------------------------------------------------
     conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("""
-        SELECT pp.*, p.pos
+    conn.row_factory = sqlite3.Row
+
+    # ── Load player profiles + basic stats + 3PA rate from game logs ─────
+    rows = conn.execute("""
+        SELECT
+            pp.*,
+            p.pos,
+            p.ppg,
+            p.rpg,
+            p.apg,
+            p.spg,
+            p.bpg,
+            p.tp_pct,
+            p.fg_pct
         FROM player_profiles pp
         LEFT JOIN players p ON pp.player_id = p.player_id
         WHERE pp.updated_at IS NOT NULL
-    """, conn)
-    print(f"Loaded {len(df)} player profiles")
+    """).fetchall()
 
-    if len(df) < 20:
-        print("ERROR: Not enough profiles (need >= 20).", file=sys.stderr)
+    print(f"Loaded {len(rows)} player profiles")
+    if len(rows) < 20:
+        print("ERROR: Not enough profiles.", file=sys.stderr)
         sys.exit(1)
 
-    # -- Encode positions ---------------------------------------------------
-    pos_data = []
-    for idx, row in df.iterrows():
-        pos_data.append(encode_position(row.get("pos", ""), row))
-    pos_df = pd.DataFrame(pos_data, index=df.index)
-    df = pd.concat([df, pos_df], axis=1)
+    # Compute 3PA rate from game logs (season aggregate)
+    fg3a_rates = {}
+    gl_rows = conn.execute("""
+        SELECT player_id,
+               SUM(fg3a) AS total_fg3a,
+               SUM(fga)  AS total_fga
+        FROM player_game_logs
+        WHERE season = '2025-26' AND fga > 0
+        GROUP BY player_id
+    """).fetchall()
+    for r in gl_rows:
+        fga = r["total_fga"]
+        if fga and fga > 0:
+            fg3a_rates[r["player_id"]] = (r["total_fg3a"] or 0) / fga
 
-    # -- Feature matrix (skip columns with <10% non-null) -------------------
-    available = []
-    for f in ALL_FEATURES:
-        if f not in df.columns:
-            continue
-        if df[f].notna().sum() < len(df) * 0.1:
-            print(f"  Skipping {f}: insufficient data")
-            continue
-        available.append(f)
-    print(f"Using {len(available)} features: {available}")
+    # ── Classify each player ─────────────────────────────────────────────
+    results = []
+    for row in rows:
+        pid = row["player_id"]
+        p = {
+            "pos":             row["pos"],
+            "usg_pct":         _v(row["usg_pct"], 0) * 100,     # stored as 0-1, convert to %
+            "ts_pct":          _v(row["ts_pct"], 0) * 100,
+            "ast_pct":         _v(row["ast_pct"], 0) * 100,
+            "oreb_pct":        _v(row["oreb_pct"], 0),
+            "dreb_pct":        _v(row["dreb_pct"], 0),
+            "net_rating":      _v(row["net_rating"], 0),
+            "touches":         _v(row["touches"], 0),
+            "paint_touches":   _v(row["paint_touches"], 0),
+            "post_touches":    _v(row["post_touches"], 0),
+            "elbow_touches":   _v(row["elbow_touches"], 0),
+            "passes_made":     _v(row["passes_made"], 0),
+            "potential_ast":   _v(row["potential_ast"], 0),
+            "drives":          _v(row["drives"], 0),
+            "contested_shots": _v(row["contested_shots"], 0),
+            "deflections":     _v(row["deflections"], 0),
+            "screen_assists":  _v(row["screen_assists"], 0),
+            "ppg":             _v(row["ppg"], 0),
+            "rpg":             _v(row["rpg"], 0),
+            "apg":             _v(row["apg"], 0),
+            "spg":             _v(row["spg"], 0),
+            "bpg":             _v(row["bpg"], 0),
+            "tp_pct":          _v(row["tp_pct"], 0),
+            "fg_pct":          _v(row["fg_pct"], 0),
+            "fg3a_rate":       fg3a_rates.get(pid, 0.0),
+        }
+        scores, primary = classify(p)
+        results.append({
+            "player_id": pid,
+            "name":      row["name"],
+            "team":      row["team"],
+            "pos":       row["pos"],
+            "scores":    scores,
+            "primary":   primary,
+        })
 
-    X = df[available].copy()
-    imputer = SimpleImputer(strategy="median")
-    X_imp = imputer.fit_transform(X)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_imp)
+    # ── Print results ────────────────────────────────────────────────────
+    # Group by primary archetype
+    by_arch = {}
+    for r in results:
+        by_arch.setdefault(r["primary"], []).append(r)
 
-    # -- Choose k -----------------------------------------------------------
-    if args.k:
-        k = args.k
-        print(f"Using k={k} (user-specified)")
-    else:
-        print("Finding best k (silhouette method, k=6..10)...")
-        k = find_best_k(X_scaled, range(6, 11))
-
-    # -- Fit KMeans ---------------------------------------------------------
-    km = KMeans(n_clusters=k, random_state=42, n_init=10)
-    df.loc[:, "archetype"] = km.fit_predict(X_scaled)
-
-    # -- Phase 1: Label clusters from centroids -----------------------------
-    centroids_orig = scaler.inverse_transform(km.cluster_centers_)
-    centroid_dicts = [dict(zip(available, row)) for row in centroids_orig]
-    cluster_labels = {i: label_centroid(c) for i, c in enumerate(centroid_dicts)}
-
-    # Reclassify garbage clusters (very low TS or very negative NET) as ROLE_PLAYER
-    for cid, cd in enumerate(centroid_dicts):
-        ts = cd.get("ts_pct", 0)
-        net = cd.get("net_rating", 0)
-        if ts < 0.30 or net < -20:
-            cluster_labels[cid] = "ROLE_PLAYER"
-
-    # Disambiguate remaining duplicate cluster labels with position suffix
-    label_counts = {}
-    for cid, label in sorted(cluster_labels.items()):
-        label_counts[label] = label_counts.get(label, 0) + 1
-    for cid, label in list(cluster_labels.items()):
-        if label == "ROLE_PLAYER":
-            continue  # don't disambiguate role players
-        if label_counts.get(label, 0) > 1:
-            c = centroid_dicts[cid]
-            gs = c.get("is_guard", 0)
-            ws = c.get("is_wing", 0)
-            bs = c.get("is_big", 0)
-            mx = max(gs, ws, bs)
-            suffix = "_BIG" if mx == bs else ("_GUARD" if mx == gs else "_WING")
-            cluster_labels[cid] = f"{label}{suffix}"
-
-    # -- Phase 2: Per-player position overrides -----------------------------
-    final_labels = []
-    for _, row in df.iterrows():
-        base = cluster_labels[row["archetype"]]
-        final = apply_position_override(base, row.get("pos", ""))
-        final_labels.append(final)
-    df.loc[:, "archetype_label"] = final_labels
-
-    # -- Print centroid details ---------------------------------------------
-    print("\nCluster centroids:")
-    for cid, cd in enumerate(centroid_dicts):
-        usg = cd.get("usg_pct", 0) * 100
-        ts = cd.get("ts_pct", 0) * 100
-        ast = cd.get("ast_pct", 0) * 100
-        cont = cd.get("contested_shots", 0)
-        defl = cd.get("deflections", 0)
-        scr = cd.get("screen_assists", 0)
-        net = cd.get("net_rating", 0)
-        ig = cd.get("is_guard", 0)
-        iw = cd.get("is_wing", 0)
-        ib = cd.get("is_big", 0)
-        print(f"  C{cid} [{cluster_labels[cid]}]: USG={usg:.1f}% TS={ts:.1f}% AST={ast:.1f}% "
-              f"CONT={cont:.1f} DEFL={defl:.1f} SCR={scr:.1f} NET={net:+.1f} "
-              f"pos=[G={ig:.2f} W={iw:.2f} B={ib:.2f}]")
-
-    # -- Print summary table ------------------------------------------------
-    header = f"{'CL':<4} {'CLUSTER_TYPE':<22} {'N':<5} {'USG%':<7} {'TS%':<7} {'AST%':<7} {'NET':<7}"
-    print(f"\n{'-' * len(header)}")
-    print(header)
-    print(f"{'-' * len(header)}")
-    for cid in sorted(df["archetype"].unique()):
-        group = df[df["archetype"] == cid]
-        label = cluster_labels[cid]
-        n = len(group)
-        usg = group["usg_pct"].mean() * 100
-        ts = group["ts_pct"].mean() * 100
-        ast = group["ast_pct"].mean() * 100
-        net = group["net_rating"].mean()
-        print(f"{cid:<4} {label:<22} {n:<5} {usg:<7.1f} {ts:<7.1f} {ast:<7.1f} {net:<+7.1f}")
-
-    # -- Print archetype distribution (after position overrides) ------------
-    print(f"\nFinal archetype distribution (after position overrides):")
-    for label in sorted(df["archetype_label"].unique()):
-        group = df[df["archetype_label"] == label]
-        top = ", ".join(
-            f"{r['name']} ({r['team']}, {r.get('pos', '?')})"
-            for _, r in group.sort_values("usg_pct", ascending=False).head(4).iterrows()
-        )
-        print(f"  {label:<24} ({len(group):>3} players)")
-        print(f"    {top}")
-    print()
+    print(f"\nArchetype distribution ({len(results)} players):")
+    for arch in ARCHETYPES:
+        players = by_arch.get(arch, [])
+        print(f"\n  {DISPLAY[arch]:<22} ({len(players)} players)")
+        # Show top 5 by primary score
+        for pl in sorted(players, key=lambda x: x["scores"][arch], reverse=True)[:5]:
+            s = pl["scores"]
+            top3 = sorted(s.items(), key=lambda x: -x[1])[:3]
+            top3_str = ", ".join(f"{DISPLAY[k]}:{v:.2f}" for k, v in top3 if v > 0)
+            print(f"    {pl['name']:<24} ({pl['pos']:<3} {pl['team']}) → {top3_str}")
 
     if args.dry_run:
-        print("Dry run - no changes written to DB.")
+        print("\nDry run — no DB changes.")
         conn.close()
         return
 
-    # -- Write back to DB ---------------------------------------------------
-    cur = conn.cursor()
-    for col, coltype in [("archetype", "INTEGER"), ("archetype_label", "TEXT")]:
+    # ── Write to DB ──────────────────────────────────────────────────────
+    # Add score columns if missing
+    arch_cols = [f"arch_{a}" for a in ARCHETYPES]
+    for col in arch_cols:
         try:
-            cur.execute(f"ALTER TABLE player_profiles ADD COLUMN {col} {coltype}")
+            conn.execute(f"ALTER TABLE player_profiles ADD COLUMN {col} REAL")
         except sqlite3.OperationalError:
             pass
 
-    for _, row in df.iterrows():
-        cur.execute(
-            "UPDATE player_profiles SET archetype = ?, archetype_label = ? WHERE player_id = ?",
-            (int(row["archetype"]), row["archetype_label"], int(row["player_id"])),
-        )
+    set_clause = ", ".join(f"arch_{a} = ?" for a in ARCHETYPES)
+    sql = f"UPDATE player_profiles SET archetype_label = ?, {set_clause} WHERE player_id = ?"
+
+    cur = conn.cursor()
+    for r in results:
+        label = DISPLAY[r["primary"]]
+        vals  = [r["scores"][a] for a in ARCHETYPES]
+        cur.execute(sql, [label] + vals + [r["player_id"]])
+
     conn.commit()
     conn.close()
-    print(f"Written {len(df)} archetype assignments to player_profiles.")
+    print(f"\nWritten {len(results)} fuzzy archetype profiles to DB.")
 
 
 if __name__ == "__main__":

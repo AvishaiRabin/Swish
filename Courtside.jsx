@@ -1889,17 +1889,18 @@ function PredictionsPage() {
                   fontSize: 12, fontWeight: 700, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace",
                 }}>2</div>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>K-Means Archetype Clustering</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Fuzzy Archetype Classification</div>
                   <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
-                    After every profile refresh, a Python script clusters all ~545 active players using
-                    K-means (k=8) on 13 features: 10 statistical (USG%, TS%, AST%, AST/TO, OREB%, DREB%,
-                    contested shots, deflections, screen assists, net rating) plus 3 positional encodings
-                    derived from each player's listed position (guard / wing / big, encoded as continuous
-                    values so a G-F reads as 0.7 guard + 0.5 wing). Clusters are labeled by centroid rules
-                    (e.g., high AST% + guard → LEAD GUARD), then per-player position overrides handle
-                    edge cases — a forward who clusters with guards becomes POINT FORWARD (Luka Doncic),
-                    a big guard with elite playmaking becomes OVERSIZED PLAYMAKER. The archetype is shown
-                    as a badge on each player's profile page.
+                    After every profile refresh, a Python script scores all ~545 active players across 13
+                    archetypes: Floor General, Scoring PG, Combo Guard, Large Playmaker, 3-and-D Wing,
+                    Two-Way Wing, Shot-Creating Wing, Point Wing, Stretch Big, Unicorn Big, Rim-Running Big,
+                    Defensive Anchor, and Versatile PF. Each archetype has a dedicated scoring function that
+                    blends position (soft 15-25% weight, used as a height proxy) with advanced stats —
+                    USG%, TS%, AST%, drives, touches, contested shots, deflections, blocks, 3PA rate, and more.
+                    Raw scores are normalized so they sum to ~1.0, giving each player a fuzzy profile rather
+                    than a hard label. The top archetype becomes their display label, while secondary affinities
+                    capture hybrid roles (e.g., Luka → Large Playmaker / Point Wing). Hover the badge on any
+                    player's page to see their top 5 archetype scores.
                   </p>
                 </div>
               </div>
@@ -2848,9 +2849,9 @@ function AboutPage() {
           and uses Claude (Anthropic) to generate daily game predictions with automated grading.
         </p>
         <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.75 }}>
-          Player archetypes (Lead Guard, Point Forward, Paint Beast, etc.) are derived nightly
-          via K-means clustering on advanced stats — usage rate, true shooting, assist rate,
-          defensive metrics, and positional encoding across all ~545 active NBA players.
+          Player archetypes (Floor General, Large Playmaker, Two-Way Wing, etc.) are derived nightly
+          via fuzzy scoring across 13 archetype models — blending usage rate, true shooting, assist rate,
+          drives, touches, defensive metrics, and position across all ~545 active NBA players.
         </p>
       </div>
     </div>
@@ -3668,6 +3669,7 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
   const [rollingWindow, setRollingWindow] = useState(5);
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [archetypeLabel, setArchetypeLabel] = useState(null);
+  const [archetypeScores, setArchetypeScores] = useState(null);
 
   // For live-only players, fetch their game log
   useEffect(() => {
@@ -3689,6 +3691,25 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
       .then((rows) => {
         if (!cancelled && rows?.[0]?.archetypeLabel) {
           setArchetypeLabel(rows[0].archetypeLabel);
+          const scoreMap = {
+            "Floor General": rows[0].archFloorGeneral,
+            "Scoring PG": rows[0].archScoringPg,
+            "Combo Guard": rows[0].archComboGuard,
+            "Large Playmaker": rows[0].archLargePlaymaker,
+            "3-and-D Wing": rows[0].archThreeAndDWing,
+            "Two-Way Wing": rows[0].archTwoWayWing,
+            "Shot-Creating Wing": rows[0].archShotCreatingWing,
+            "Point Wing": rows[0].archPointWing,
+            "Stretch Big": rows[0].archStretchBig,
+            "Unicorn Big": rows[0].archUnicornBig,
+            "Rim-Running Big": rows[0].archRimRunningBig,
+            "Defensive Anchor": rows[0].archDefensiveAnchor,
+            "Versatile PF": rows[0].archVersatilePf,
+          };
+          const sorted = Object.entries(scoreMap)
+            .filter(([, v]) => v != null && v > 0)
+            .sort((a, b) => b[1] - a[1]);
+          if (sorted.length > 0) setArchetypeScores(sorted);
         }
       })
       .catch(() => { });
@@ -3833,8 +3854,11 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
               <div style={{ width: 28, height: 28, borderRadius: 6, background: team.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "white" }}>{player.team}</div>
               {archetypeLabel && (
                 <div
-                  title="Player archetype derived from K-means clustering of NBA Stats advanced metrics (USG%, TS%, AST%, net rating, hustle stats) + position encoding. Updated nightly."
+                  title={archetypeScores
+                    ? `Fuzzy archetype scores (top 5):\n${archetypeScores.slice(0, 5).map(([n, v]) => `${n}: ${(v * 100).toFixed(0)}%`).join("\n")}\n\nDerived from advanced metrics + position. Updated nightly.`
+                    : "Player archetype derived from fuzzy scoring of advanced metrics. Updated nightly."}
                   style={{
+                    display: "flex", alignItems: "center", gap: 6,
                     background: "rgba(249,115,22,0.15)",
                     border: "1px solid rgba(249,115,22,0.4)",
                     borderRadius: 20,
@@ -3848,7 +3872,10 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
                     cursor: "help",
                   }}
                 >
-                  {archetypeLabel.replace(/_/g, " ")}
+                  {archetypeLabel}
+                  {archetypeScores && archetypeScores.length > 1 && archetypeScores[0][0] !== archetypeScores[1][0] && (
+                    <span style={{ opacity: 0.55, fontSize: 10 }}>/ {archetypeScores[1][0]}</span>
+                  )}
                 </div>
               )}
             </div>
@@ -4141,6 +4168,7 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
 // --- Lineup Analyzer Page ---
 function LineupAnalyzerPage() {
   const liveData = useLiveData();
+  const [view, setView] = useState("explorer"); // "explorer" | "matchups"
   const [selectedTeam, setSelectedTeam] = useState("BOS");
   const [groupSize, setGroupSize] = useState(5);
   const [playerFilter, setPlayerFilter] = useState([]);
@@ -4150,8 +4178,20 @@ function LineupAnalyzerPage() {
   const [lineups, setLineups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [matchupData, setMatchupData] = useState(null);
+  const [matchupLoading, setMatchupLoading] = useState(false);
 
   const team = TEAMS[selectedTeam] || {};
+
+  // Fetch matchup data when switching to that tab
+  useEffect(() => {
+    if (view !== "matchups" || matchupData) return;
+    setMatchupLoading(true);
+    fetch("/api/db/lineup-profiles/matchups")
+      .then((r) => r.json())
+      .then((d) => { setMatchupData(d); setMatchupLoading(false); })
+      .catch(() => setMatchupLoading(false));
+  }, [view, matchupData]);
 
   // Fetch lineups from DB when team or groupSize changes (2-5 man only)
   useEffect(() => {
@@ -4258,15 +4298,161 @@ function LineupAnalyzerPage() {
   const firstColKey = groupSize === 1 ? "name" : "players";
   const gridTemplate = columns.map((c) => (typeof c.width === "number" ? `${c.width}px` : c.width)).join(" ");
 
+  const ARCHETYPE_SHORT = {
+    TWIN_TOWERS:      "Twin Towers",
+    DEATH_LINEUP:     "Death Lineup",
+    STRETCH_LINEUP:   "Stretch",
+    PLAYMAKER_HEAVY:  "Playmaker Heavy",
+    DEFENSIVE_LINEUP: "Defensive",
+    WING_DOMINANT:    "Wing Dominant",
+    STAR_AND_SHOOTERS:"Star + Shooters",
+    BALANCED:         "Balanced",
+  };
+
+  const renderMatchupsTab = () => {
+    if (matchupLoading) return (
+      <div style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
+        <div className="loading-spinner" style={{ width: 28, height: 28, border: "3px solid var(--border-color)", borderTopColor: "var(--accent)", borderRadius: "50%", margin: "0 auto 12px", animation: "spin 0.8s linear infinite" }} />
+        Loading archetype data...
+      </div>
+    );
+    if (!matchupData || matchupData.archetypes.length === 0) return (
+      <div className="card-hover" style={{ padding: 32, textAlign: "center" }}>
+        <Info size={32} style={{ color: "var(--text-muted)", marginBottom: 12 }} />
+        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No lineup archetype data yet. Run the server to populate lineup profiles.</p>
+      </div>
+    );
+
+    const { archetypes, matrix } = matchupData;
+    const labels = archetypes.map((a) => a.label);
+
+    // Color helper for net rating
+    const netColor = (v) => {
+      const n = parseFloat(v);
+      if (isNaN(n)) return "var(--text-muted)";
+      return n > 2 ? "var(--accent-green)" : n < -2 ? "#ef4444" : "var(--text-secondary)";
+    };
+
+    // Color helper for matchup cell diff
+    const cellBg = (v) => {
+      if (v == null) return "transparent";
+      if (v > 8)  return "rgba(34,197,94,0.25)";
+      if (v > 3)  return "rgba(34,197,94,0.12)";
+      if (v < -8) return "rgba(239,68,68,0.25)";
+      if (v < -3) return "rgba(239,68,68,0.12)";
+      return "rgba(255,255,255,0.03)";
+    };
+
+    return (
+      <>
+        {/* Archetype stats summary */}
+        <div className="card-hover" style={{ padding: 20, marginBottom: 24, borderRadius: 12 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 0, marginBottom: 16 }}>Archetype Performance Summary</h3>
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "180px repeat(5, 80px)", gap: 0, minWidth: 580 }}>
+              {/* Header */}
+              {["Archetype", "Lineups", "ORtg", "DRtg", "NET", "PPG"].map((h) => (
+                <div key={h} style={{ padding: "6px 10px", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid var(--border-color)", textAlign: h === "Archetype" ? "left" : "center" }}>{h}</div>
+              ))}
+              {/* Rows */}
+              {archetypes.map((a) => (
+                <React.Fragment key={a.label}>
+                  <div style={{ padding: "10px 10px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", display: "inline-block", flexShrink: 0 }} />
+                    {ARCHETYPE_SHORT[a.label] || a.label.replace(/_/g, " ")}
+                  </div>
+                  <div style={{ padding: "10px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "center", borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)" }}>{a.count}</div>
+                  <div style={{ padding: "10px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "center", borderBottom: "1px solid var(--border-color)", color: "var(--accent-blue)" }}>{a.avgOrtg}</div>
+                  <div style={{ padding: "10px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "center", borderBottom: "1px solid var(--border-color)", color: "#f59e0b" }}>{a.avgDrtg}</div>
+                  <div style={{ padding: "10px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "center", borderBottom: "1px solid var(--border-color)", fontWeight: 700, color: netColor(a.avgNetRtg) }}>{parseFloat(a.avgNetRtg) >= 0 ? `+${a.avgNetRtg}` : a.avgNetRtg}</div>
+                  <div style={{ padding: "10px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "center", borderBottom: "1px solid var(--border-color)", color: "var(--text-secondary)" }}>{a.avgPts}</div>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Matchup matrix */}
+        <div className="card-hover" style={{ padding: 20, borderRadius: 12 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 0, marginBottom: 4 }}>Matchup Matrix</h3>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
+            Projected point differential per 100 possessions — offense (row) vs defense (column). Based on each archetype's average ORtg and DRtg.
+          </p>
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: `140px repeat(${labels.length}, 90px)`, gap: 2, minWidth: 140 + labels.length * 92 }}>
+              {/* Corner + column headers */}
+              <div style={{ padding: "6px 8px", fontSize: 10, color: "var(--text-muted)", fontWeight: 700 }}>OFF ↓ / DEF →</div>
+              {labels.map((l) => (
+                <div key={l} style={{ padding: "6px 4px", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.3px" }}>
+                  {ARCHETYPE_SHORT[l] || l.replace(/_/g, " ")}
+                </div>
+              ))}
+              {/* Rows */}
+              {labels.map((offLabel) => (
+                <React.Fragment key={offLabel}>
+                  <div style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center" }}>
+                    {ARCHETYPE_SHORT[offLabel] || offLabel.replace(/_/g, " ")}
+                  </div>
+                  {labels.map((defLabel) => {
+                    const val = matrix[offLabel]?.[defLabel];
+                    const isDiag = offLabel === defLabel;
+                    return (
+                      <div
+                        key={defLabel}
+                        title={`${ARCHETYPE_SHORT[offLabel] || offLabel} offense vs ${ARCHETYPE_SHORT[defLabel] || defLabel} defense`}
+                        style={{
+                          padding: "8px 4px",
+                          textAlign: "center",
+                          fontSize: 12,
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontWeight: 600,
+                          borderRadius: 4,
+                          background: isDiag ? "rgba(255,255,255,0.06)" : cellBg(val),
+                          color: val == null ? "var(--text-muted)" : parseFloat(val) > 0 ? "var(--accent-green)" : parseFloat(val) < 0 ? "#ef4444" : "var(--text-secondary)",
+                          border: isDiag ? "1px solid var(--border-color)" : "none",
+                        }}
+                      >
+                        {val == null ? "—" : parseFloat(val) > 0 ? `+${val}` : val}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 0, marginTop: 16 }}>
+            Green = offense advantage · Red = defense advantage · Diagonal = archetype vs itself
+          </p>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 60px" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
           <Users size={24} style={{ color: "var(--accent-blue)" }} />
           Lineup Analyzer
         </h1>
 
+        <div style={{ display: "flex", gap: 4, borderBottom: "none" }}>
+          {[{ key: "explorer", label: "Lineup Explorer" }, { key: "matchups", label: "Archetype Matchups" }].map((t) => (
+            <button key={t.key} onClick={() => setView(t.key)} style={{
+              padding: "8px 16px", fontSize: 13, fontWeight: view === t.key ? 600 : 400,
+              color: view === t.key ? "var(--accent)" : "var(--text-muted)",
+              background: view === t.key ? "rgba(249,115,22,0.1)" : "transparent",
+              border: view === t.key ? "1px solid rgba(249,115,22,0.3)" : "1px solid transparent",
+              borderRadius: 8, cursor: "pointer", fontFamily: "'Inter', sans-serif", transition: "all 0.15s",
+            }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {view === "matchups" ? renderMatchupsTab() : (
+      <>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 28 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {/* Team dropdown */}
           <select
@@ -4514,6 +4700,8 @@ function LineupAnalyzerPage() {
             </>
           )}
         </>
+      )}
+      </>
       )}
     </div>
   );
