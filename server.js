@@ -175,6 +175,23 @@ db.exec(`
     UNIQUE(prediction_date, home_team, away_team)
   );
 
+  CREATE TABLE IF NOT EXISTS lineup_profiles (
+    lineup_id         TEXT PRIMARY KEY,
+    team              TEXT,
+    group_name        TEXT,
+    player_archetypes TEXT,
+    lineup_archetype  TEXT,
+    gp                INTEGER,
+    min               REAL,
+    pts               REAL,
+    fg_pct            REAL,
+    ortg              REAL,
+    drtg              REAL,
+    net_rtg           REAL,
+    plus_minus        REAL,
+    updated_at        INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS prediction_results (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     prediction_date TEXT NOT NULL,
@@ -204,6 +221,14 @@ for (const col of ["l15_ppg", "l15_usg_pct", "l15_ts_pct", "form_factor"]) {
 // Archetype columns written by ml/cluster_players.py
 try { db.exec("ALTER TABLE player_profiles ADD COLUMN archetype INTEGER"); } catch {}
 try { db.exec("ALTER TABLE player_profiles ADD COLUMN archetype_label TEXT"); } catch {}
+// 13 fuzzy archetype score columns (0.0–1.0 each, sum ≈ 1.0)
+for (const a of [
+  "floor_general", "scoring_pg", "combo_guard", "large_playmaker",
+  "three_and_d_wing", "two_way_wing", "shot_creating_wing", "point_wing",
+  "stretch_big", "unicorn_big", "rim_running_big", "defensive_anchor", "versatile_pf",
+]) {
+  try { db.exec(`ALTER TABLE player_profiles ADD COLUMN arch_${a} REAL`); } catch {}
+}
 
 // ---------------------------------------------------------------------------
 // NBA API helpers
@@ -596,16 +621,103 @@ function runClustering() {
   const script = path.join(__dirname, "ml", "cluster_players.py");
   if (!fs.existsSync(script)) {
     console.warn("[Clustering] ml/cluster_players.py not found, skipping");
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const proc = spawn("python", [script], { cwd: __dirname });
+    proc.stdout.on("data", (d) => console.log("[Clustering]", d.toString().trim()));
+    proc.stderr.on("data", (d) => console.warn("[Clustering]", d.toString().trim()));
+    proc.on("close", (code) => {
+      if (code === 0) console.log("[Clustering] Archetypes updated successfully");
+      else console.warn(`[Clustering] Exited with code ${code}`);
+      resolve(); // always resolve so the chain continues
+    });
+    proc.on("error", (e) => {
+      console.warn("[Clustering] Failed to spawn python:", e.message);
+      resolve();
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Lineup profile classification
+// ---------------------------------------------------------------------------
+function classifyLineupArchetype(archetypes) {
+  const a = archetypes.filter(Boolean);
+  const isBig       = (x) => ["Rim-Running Big", "Defensive Anchor", "Unicorn Big", "Stretch Big", "Versatile PF"].includes(x);
+  const isTrueBig   = (x) => ["Rim-Running Big", "Defensive Anchor", "Unicorn Big"].includes(x);
+  const isGuard     = (x) => ["Floor General", "Scoring PG", "Combo Guard"].includes(x);
+  const isPlaymaker = (x) => ["Floor General", "Scoring PG", "Large Playmaker", "Point Wing"].includes(x);
+  const is3andD     = (x) => x === "3-and-D Wing" || x === "Stretch Big";
+  const isTwoWay    = (x) => ["Two-Way Wing", "Combo Guard", "Versatile PF", "Defensive Anchor"].includes(x);
+  const isWing      = (x) => ["3-and-D Wing", "Two-Way Wing", "Shot-Creating Wing", "Point Wing"].includes(x);
+
+  const trueBigs   = a.filter(isTrueBig).length;
+  const guards     = a.filter(isGuard).length;
+  const playmakers = a.filter(isPlaymaker).length;
+  const threeAndD  = a.filter(is3andD).length;
+  const twoWay     = a.filter(isTwoWay).length;
+  const wings      = a.filter(isWing).length;
+  const bigs       = a.filter(isBig).length;
+
+  if (trueBigs >= 2)                           return "TWIN_TOWERS";
+  if (bigs === 0 && guards >= 3)               return "DEATH_LINEUP";
+  if (threeAndD >= 3)                          return "STRETCH_LINEUP";
+  if (playmakers >= 2)                         return "PLAYMAKER_HEAVY";
+  if (twoWay >= 3)                             return "DEFENSIVE_LINEUP";
+  if (wings >= 3)                              return "WING_DOMINANT";
+  if (playmakers === 1 && threeAndD >= 2)      return "STAR_AND_SHOOTERS";
+  return "BALANCED";
+}
+
+async function refreshLineupProfiles() {
+  const lineups5 = db.prepare(
+    "SELECT * FROM lineups WHERE group_size = 5 AND min >= 5"
+  ).all();
+  if (lineups5.length === 0) {
+    console.log("[LineupProfiles] No 5-man lineups found, skipping");
     return;
   }
-  const proc = spawn("python", [script], { cwd: __dirname });
-  proc.stdout.on("data", (d) => console.log("[Clustering]", d.toString().trim()));
-  proc.stderr.on("data", (d) => console.warn("[Clustering]", d.toString().trim()));
-  proc.on("close", (code) => {
-    if (code === 0) console.log("[Clustering] Archetypes updated successfully");
-    else console.warn(`[Clustering] Exited with code ${code}`);
-  });
-  proc.on("error", (e) => console.warn("[Clustering] Failed to spawn python:", e.message));
+
+  // Build name → archetype lookup (lowercase for fuzzy match)
+  const profileRows = db.prepare("SELECT name, archetype_label FROM player_profiles").all();
+  const archetypeByName = new Map();
+  for (const r of profileRows) {
+    if (r.archetype_label) archetypeByName.set(r.name.toLowerCase(), r.archetype_label);
+  }
+
+  const ins = db.prepare(
+    `INSERT OR REPLACE INTO lineup_profiles
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+
+  let count = 0;
+  db.transaction(() => {
+    for (const lu of lineups5) {
+      const players    = lu.group_name.split(" - ").map((s) => s.trim());
+      const archetypes = players.map((n) => archetypeByName.get(n.toLowerCase()) || null);
+      const lineupArch = classifyLineupArchetype(archetypes);
+      ins.run(
+        `${lu.team}||${lu.group_name}`,
+        lu.team,
+        lu.group_name,
+        JSON.stringify(archetypes),
+        lineupArch,
+        lu.gp,
+        lu.min,
+        lu.pts,
+        lu.fg_pct,
+        lu.ortg,
+        lu.drtg,
+        lu.net_rtg,
+        lu.plus_minus,
+        Date.now()
+      );
+      count++;
+    }
+    db.prepare("INSERT OR REPLACE INTO meta VALUES ('lineup_profiles',?)").run(Date.now());
+  })();
+  console.log(`[LineupProfiles] Built ${count} lineup profiles`);
 }
 
 async function refreshAll(force = false) {
@@ -618,8 +730,12 @@ async function refreshAll(force = false) {
   // Player profiles run after — 7 sequential API calls, keep them separate
   if (force || isStale("player_profiles", 24 * 60 * 60 * 1000) || isEmpty("player_profiles")) {
     await refreshPlayerProfiles().catch((e) => console.error("[DB] Player profiles error:", e.message));
-    // Re-cluster archetypes after profiles update
-    runClustering();
+    // Re-cluster archetypes after profiles update — await so lineup profiles get fresh labels
+    await runClustering();
+  }
+  // Lineup profiles depend on both lineups and player_profiles (for archetypes)
+  if (force || isStale("lineup_profiles", 24 * 60 * 60 * 1000) || isEmpty("lineup_profiles")) {
+    await refreshLineupProfiles().catch((e) => console.error("[LineupProfiles] Error:", e.message));
   }
   // Current season game log update — runs once per day after players table is fresh
   if (force || isStale("game_logs_current", 24 * 60 * 60 * 1000)) {
@@ -691,7 +807,7 @@ async function backfillHistoricalLogs() {
       } catch (e) {
         console.warn(`[GameLogs] ${name} ${season}: ${e.message}`);
       }
-      await new Promise((r) => setTimeout(r, 150)); // rate limit
+      await new Promise((r) => setTimeout(r, 400)); // rate limit
     }
   }
   db.prepare("INSERT OR REPLACE INTO meta VALUES ('game_logs_backfill', ?)").run(Date.now());
@@ -712,7 +828,7 @@ async function updateCurrentSeasonLogs() {
     } catch (e) {
       console.warn(`[GameLogs] ${name} current: ${e.message}`);
     }
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 400));
   }
   db.prepare("INSERT OR REPLACE INTO meta VALUES ('game_logs_current', ?)").run(Date.now());
   console.log(`[GameLogs] Current season update complete: ${total} new rows`);
@@ -837,7 +953,11 @@ async function gatherPredictionContext() {
   if (relevantPlayers.length > 0) {
     const placeholders = relevantPlayers.map(() => "?").join(",");
     const profileRows = db.prepare(
-      `SELECT player_id, usg_pct, ts_pct, net_rating, form_factor, archetype_label FROM player_profiles WHERE player_id IN (${placeholders})`
+      `SELECT player_id, usg_pct, ts_pct, net_rating, form_factor, archetype_label,
+              arch_floor_general, arch_scoring_pg, arch_combo_guard, arch_large_playmaker,
+              arch_three_and_d_wing, arch_two_way_wing, arch_shot_creating_wing, arch_point_wing,
+              arch_stretch_big, arch_unicorn_big, arch_rim_running_big, arch_defensive_anchor, arch_versatile_pf
+       FROM player_profiles WHERE player_id IN (${placeholders})`
     ).all(...relevantPlayers.map((p) => p.player_id));
     for (const r of profileRows) profileMap.set(r.player_id, r);
   }
@@ -874,7 +994,20 @@ async function gatherPredictionContext() {
       if (prof.net_rating != null) parts.push(`NET:${prof.net_rating > 0 ? "+" : ""}${prof.net_rating.toFixed(1)}`);
       if (prof.form_factor != null) parts.push(`FF:${prof.form_factor.toFixed(2)}`);
       if (parts.length > 0) profStr = ` | ${parts.join(" ")}`;
-      if (prof.archetype_label) profStr += ` [${prof.archetype_label}]`;
+      // Show top 2 fuzzy archetypes
+      if (prof.archetype_label) {
+        const archScores = [
+          ["Floor General", prof.arch_floor_general], ["Scoring PG", prof.arch_scoring_pg],
+          ["Combo Guard", prof.arch_combo_guard], ["Large Playmaker", prof.arch_large_playmaker],
+          ["3-and-D Wing", prof.arch_three_and_d_wing], ["Two-Way Wing", prof.arch_two_way_wing],
+          ["Shot-Creating Wing", prof.arch_shot_creating_wing], ["Point Wing", prof.arch_point_wing],
+          ["Stretch Big", prof.arch_stretch_big], ["Unicorn Big", prof.arch_unicorn_big],
+          ["Rim-Running Big", prof.arch_rim_running_big], ["Defensive Anchor", prof.arch_defensive_anchor],
+          ["Versatile PF", prof.arch_versatile_pf],
+        ].filter(([, v]) => v != null && v > 0).sort((a, b) => b[1] - a[1]);
+        const top = archScores.slice(0, 2).map(([n]) => n).join(" / ");
+        if (top) profStr += ` [${top}]`;
+      }
     }
     return `${base}${l5Str}${profStr}`;
   }).join("\n");
@@ -1155,6 +1288,76 @@ app.get("/api/db/lineups", (req, res) => {
   })));
 });
 
+app.get("/api/db/lineup-profiles", (req, res) => {
+  const { team, archetype } = req.query;
+  let query = "SELECT * FROM lineup_profiles WHERE 1=1";
+  const params = [];
+  if (team)      { query += " AND team = ?";             params.push(team); }
+  if (archetype) { query += " AND lineup_archetype = ?"; params.push(archetype); }
+  query += " ORDER BY net_rtg DESC LIMIT 500";
+  const rows = db.prepare(query).all(...params);
+  res.json(rows.map((r) => ({
+    lineupId:        r.lineup_id,
+    team:            r.team,
+    players:         r.group_name,
+    playerArchetypes: JSON.parse(r.player_archetypes || "[]"),
+    lineupArchetype: r.lineup_archetype,
+    gp:              r.gp,
+    min:             r.min?.toFixed(1) ?? null,
+    pts:             r.pts?.toFixed(1) ?? null,
+    fgPct:           r.fg_pct != null ? +(r.fg_pct * 100).toFixed(1) : null,
+    ortg:            r.ortg?.toFixed(1) ?? null,
+    drtg:            r.drtg?.toFixed(1) ?? null,
+    netRtg:          r.net_rtg?.toFixed(1) ?? null,
+    plusMinus:       r.plus_minus?.toFixed(1) ?? null,
+  })));
+});
+
+app.get("/api/db/lineup-profiles/matchups", (_req, res) => {
+  const rows = db.prepare(`
+    SELECT
+      lineup_archetype,
+      COUNT(*)       AS lineup_count,
+      AVG(ortg)      AS avg_ortg,
+      AVG(drtg)      AS avg_drtg,
+      AVG(net_rtg)   AS avg_net_rtg,
+      AVG(pts)       AS avg_pts,
+      SUM(gp)        AS total_gp
+    FROM lineup_profiles
+    WHERE lineup_archetype IS NOT NULL AND ortg IS NOT NULL AND drtg IS NOT NULL
+    GROUP BY lineup_archetype
+    ORDER BY avg_net_rtg DESC
+  `).all();
+
+  // Projected matchup diff: offenseORtg - defenseORtg
+  // Positive = offense-favored, negative = defense-favored
+  const statsMap = {};
+  for (const r of rows) statsMap[r.lineup_archetype] = r;
+
+  const matrix = {};
+  for (const off of Object.keys(statsMap)) {
+    matrix[off] = {};
+    for (const def of Object.keys(statsMap)) {
+      const o = statsMap[off].avg_ortg;
+      const d = statsMap[def].avg_drtg;
+      matrix[off][def] = o != null && d != null ? +(o - d).toFixed(1) : null;
+    }
+  }
+
+  res.json({
+    archetypes: rows.map((r) => ({
+      label:       r.lineup_archetype,
+      count:       r.lineup_count,
+      avgOrtg:     r.avg_ortg?.toFixed(1) ?? null,
+      avgDrtg:     r.avg_drtg?.toFixed(1) ?? null,
+      avgNetRtg:   r.avg_net_rtg?.toFixed(1) ?? null,
+      avgPts:      r.avg_pts?.toFixed(1) ?? null,
+      totalGp:     r.total_gp,
+    })),
+    matrix,
+  });
+});
+
 app.get("/api/db/player-profiles", (req, res) => {
   const team = req.query.team;
   const playerId = req.query.playerId ? parseInt(req.query.playerId) : null;
@@ -1204,6 +1407,20 @@ app.get("/api/db/player-profiles", (req, res) => {
     l15TsPct:        r.l15_ts_pct  != null ? +(r.l15_ts_pct  * 100).toFixed(1) : null,
     formFactor:      r.form_factor?.toFixed(3)      ?? null,
     archetypeLabel:  r.archetype_label              ?? null,
+    // Archetype scores (fuzzy 0-1)
+    archFloorGeneral:    r.arch_floor_general       ?? null,
+    archScoringPg:       r.arch_scoring_pg          ?? null,
+    archComboGuard:      r.arch_combo_guard         ?? null,
+    archLargePlaymaker:  r.arch_large_playmaker     ?? null,
+    archThreeAndDWing:   r.arch_three_and_d_wing    ?? null,
+    archTwoWayWing:      r.arch_two_way_wing        ?? null,
+    archShotCreatingWing:r.arch_shot_creating_wing  ?? null,
+    archPointWing:       r.arch_point_wing          ?? null,
+    archStretchBig:      r.arch_stretch_big         ?? null,
+    archUnicornBig:      r.arch_unicorn_big         ?? null,
+    archRimRunningBig:   r.arch_rim_running_big     ?? null,
+    archDefensiveAnchor: r.arch_defensive_anchor    ?? null,
+    archVersatilePf:     r.arch_versatile_pf        ?? null,
     updatedAt:       r.updated_at,
   })));
 });
