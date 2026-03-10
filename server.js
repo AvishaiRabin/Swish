@@ -5,7 +5,11 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
+import { setDefaultResultOrder } from "dns";
 import Database from "better-sqlite3";
+
+// Force IPv4-first DNS resolution — IPv6 SSL handshake fails on this network
+setDefaultResultOrder("ipv4first");
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
@@ -728,7 +732,7 @@ async function refreshAll(force = false) {
     (force || isStale("lineups")   || isEmpty("lineups"))         ? refreshLineups()  : Promise.resolve(),
   ]);
   // Player profiles run after — 7 sequential API calls, keep them separate
-  if (force || isStale("player_profiles", 24 * 60 * 60 * 1000) || isEmpty("player_profiles")) {
+  if (force || isStale("player_profiles", 7 * 24 * 60 * 60 * 1000) || isEmpty("player_profiles")) {
     await refreshPlayerProfiles().catch((e) => console.error("[DB] Player profiles error:", e.message));
     // Re-cluster archetypes after profiles update — await so lineup profiles get fresh labels
     await runClustering();
@@ -1644,12 +1648,10 @@ function readFileCache(key) {
     return env.data;
   } catch { try { fs.unlinkSync(fp); } catch {} return null; }
 }
-function writeFileCache(key, endpoint, data) {
+function writeFileCache(key, endpoint, data, ttlOverride) {
   try {
-    fs.writeFileSync(
-      getCachePath(key),
-      JSON.stringify({ cachedAt: Date.now(), ttl: FILE_CACHE_TTL[endpoint] || DEFAULT_FILE_TTL, data })
-    );
+    const ttl = ttlOverride ?? FILE_CACHE_TTL[endpoint] ?? DEFAULT_FILE_TTL;
+    fs.writeFileSync(getCachePath(key), JSON.stringify({ cachedAt: Date.now(), ttl, data }));
   } catch {}
 }
 
@@ -1679,12 +1681,36 @@ app.get("/api/nba/:endpoint", async (req, res) => {
     const response = await fetch(url, { headers: NBA_HEADERS });
     if (!response.ok) return res.status(response.status).json({ error: `NBA API ${response.status}` });
     const data = await response.json();
-    writeFileCache(cacheKey, endpoint, data);
-    res.set("Cache-Control", `public, max-age=${Math.floor(ttl / 1000)}`);
+    // For past-date scoreboards, only use the long TTL if all games are final —
+    // if any game is still live/pre-game, keep re-fetching every 5 minutes.
+    let writeTtl = ttl;
+    if (endpoint === "scoreboardv3" && ttl > FILE_CACHE_TTL.scoreboardv3) {
+      const games = data.scoreboard?.games || [];
+      const allFinal = games.length > 0 && games.every((g) => g.gameStatus === 3);
+      if (!allFinal) writeTtl = FILE_CACHE_TTL.scoreboardv3; // 5 min — keep refreshing
+    }
+    writeFileCache(cacheKey, endpoint, data, writeTtl);
+    res.set("Cache-Control", `public, max-age=${Math.floor(writeTtl / 1000)}`);
     res.set("X-Cache", "MISS");
     res.json(data);
   } catch (err) {
     console.error(`Proxy error for ${endpoint}:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// CDN live box score proxy — stats.nba.com v3 returns empty for in-progress games,
+// but the CDN feed at cdn.nba.com has live data in the same format.
+app.get("/api/nba-live/boxscore/:gameId", async (req, res) => {
+  const { gameId } = req.params;
+  const url = `https://cdn.nba.com/static/json/liveData/boxscore/boxscore_${gameId}.json`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return res.status(response.status).json({ error: `CDN ${response.status}` });
+    const data = await response.json();
+    // Reshape cdn response (data.game) to match v3 format (data.boxScoreTraditional)
+    res.json({ boxScoreTraditional: data.game });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

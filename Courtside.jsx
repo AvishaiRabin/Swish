@@ -2218,7 +2218,7 @@ function ScoreboardTicker({ games, onGameClick }) {
           <ScoreCard
             key={game.id}
             game={game}
-            onClick={() => onGameClick(game.id)}
+            onClick={() => onGameClick(game.id, game)}
           />
         ))}
       </div>
@@ -5703,22 +5703,41 @@ function TeamDetailPage({ teamAbbr, onBack }) {
 // --- Game Detail Page ---
 function GameDetailPage({ gameId, onBack, fallbackGame = null }) {
   const liveData = useLiveData();
-  const game = liveData.scoreboard.find((g) => g.id === gameId) ?? fallbackGame;
+  const liveGame = liveData.scoreboard.find((g) => g.id === gameId);
+  const [fetchedGame, setFetchedGame] = useState(null);
+  const game = liveGame ?? fallbackGame ?? fetchedGame;
   const mockDetail = mockData.gameDetails[gameId];
   const [liveBoxScore, setLiveBoxScore] = useState(null);
   const [boxScoreLoading, setBoxScoreLoading] = useState(false);
 
+  // If we have no game object (e.g. direct navigation without fallback),
+  // try to find it by scanning recent scoreboards (today + yesterday).
+  useEffect(() => {
+    if (liveGame || fallbackGame || !gameId) return;
+    let cancelled = false;
+    const today = new Date();
+    const dates = [0, -1, -2].map((offset) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + offset);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    });
+    (async () => {
+      for (const date of dates) {
+        if (cancelled) return;
+        const games = await fetchScoreboard(date).catch(() => []);
+        const found = games.find((g) => g.id === gameId);
+        if (found && !cancelled) { setFetchedGame(found); return; }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [gameId, liveGame, fallbackGame]);
+
   // Fetch live box score from NBA API when no mock detail exists.
-  // Don't gate on liveData.isLive — for past/future games the fallback game
-  // object is available immediately and we should fetch as soon as we have it.
-  // If the server is unreachable, fetchBoxScore rejects and .catch() handles it.
   useEffect(() => {
     if (!game || mockDetail) return;
     if (game.status === "UPCOMING") return;
     let cancelled = false;
     setBoxScoreLoading(true);
-    // Always bust the in-memory + localStorage cache so we never show stale
-    // empty-player data that was cached while the game was still live.
     clearEndpointCache("boxscoretraditionalv3");
     fetchBoxScore(gameId, game.homeTeam, game.awayTeam)
       .then((data) => { if (!cancelled && data) setLiveBoxScore(data); })
@@ -6943,7 +6962,7 @@ function HomePage({ onGameClick, onPlayerClick, onNavigate }) {
                 <GameCard
                   key={game.id}
                   game={game}
-                  onClick={() => onGameClick(game.id)}
+                  onClick={() => onGameClick(game.id, game)}
                 />
               ))}
             </div>
