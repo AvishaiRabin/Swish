@@ -127,18 +127,24 @@ function evictOldestEntries() {
 // ---------------------------------------------------------------------------
 // Core fetch with two-tier cache: memCache → localStorage → network
 // ---------------------------------------------------------------------------
+// memCache stores { data, cachedAt } so TTL is respected within the session
 const memCache = new Map();
 
 async function fetchNba(endpoint, params = {}) {
   const cacheKey = buildCacheKey(endpoint, params);
+  const ttl = CACHE_TTL[endpoint] || DEFAULT_TTL;
 
-  // 1. In-memory cache (instant, avoids JSON parse)
-  if (memCache.has(cacheKey)) return memCache.get(cacheKey);
+  // 1. In-memory cache — check TTL so live/scoreboard data actually refreshes
+  if (memCache.has(cacheKey)) {
+    const { data, cachedAt } = memCache.get(cacheKey);
+    if (Date.now() - cachedAt <= ttl) return data;
+    memCache.delete(cacheKey);
+  }
 
   // 2. localStorage (survives page reload)
   const localCached = readLocalCache(cacheKey);
   if (localCached) {
-    memCache.set(cacheKey, localCached);
+    memCache.set(cacheKey, { data: localCached, cachedAt: Date.now() });
     return localCached;
   }
 
@@ -150,7 +156,7 @@ async function fetchNba(endpoint, params = {}) {
   const data = await res.json();
 
   // 4. Store in both caches
-  memCache.set(cacheKey, data);
+  memCache.set(cacheKey, { data, cachedAt: Date.now() });
   writeLocalCache(cacheKey, endpoint, data);
 
   return data;
@@ -323,11 +329,22 @@ export async function fetchScoreboard(date = null) {
 // correctly label which resultSet rows belong to home vs away.
 export async function fetchBoxScore(gameId, homeTeamAbbr, awayTeamAbbr) {
   // v3 endpoint — v2 returns empty rowSets for completed games
-  const data = await fetchNba("boxscoretraditionalv3", {
-    GameID: gameId,
-  });
+  let data = await fetchNba("boxscoretraditionalv3", { GameID: gameId });
+  let box = data.boxScoreTraditional;
 
-  const box = data.boxScoreTraditional;
+  // v3 returns empty players for live games — fall back to CDN live feed
+  if (box && (!box.homeTeam?.players?.length && !box.awayTeam?.players?.length)) {
+    try {
+      const liveRes = await fetch(`${API_BASE}-live/boxscore/${gameId}`);
+      if (liveRes.ok) {
+        const liveData = await liveRes.json();
+        if (liveData.boxScoreTraditional?.homeTeam?.players?.length) {
+          box = liveData.boxScoreTraditional;
+        }
+      }
+    } catch { /* fall through to return null below */ }
+  }
+
   if (!box) return null;
 
   function parseTeam(teamObj) {
@@ -336,11 +353,12 @@ export async function fetchBoxScore(gameId, homeTeamAbbr, awayTeamAbbr) {
     // First 5 players with no comment are starters
     let starterCount = 0;
     const players = (teamObj.players || [])
-      .filter((p) => p.statistics && !p.comment)
+      .filter((p) => p.statistics && !p.comment && p.status !== "INACTIVE")
       .map((p) => {
         const s = p.statistics;
         const pm = s.plusMinusPoints ?? 0;
-        const isStarter = starterCount < 5;
+        // CDN live feed has explicit starter field; v3 relies on order
+        const isStarter = p.starter != null ? p.starter === "1" : starterCount < 5;
         starterCount++;
         return {
           name: `${p.firstName} ${p.familyName}`,
