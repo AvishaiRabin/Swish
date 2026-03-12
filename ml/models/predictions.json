@@ -1,0 +1,45 @@
+{
+  "date": "2026-03-11",
+  "predictions": [
+    {
+      "home_team": "NOP",
+      "away_team": "TOR",
+      "home_win_prob": 0.249,
+      "predicted_winner": "TOR",
+      "predicted_spread": -16.1,
+      "confidence": 0.751
+    },
+    {
+      "home_team": "UTA",
+      "away_team": "NYK",
+      "home_win_prob": 0.006,
+      "predicted_winner": "NYK",
+      "predicted_spread": -57.5,
+      "confidence": 0.994
+    },
+    {
+      "home_team": "DEN",
+      "away_team": "HOU",
+      "home_win_prob": 0.681,
+      "predicted_winner": "DEN",
+      "predicted_spread": 7.8,
+      "confidence": 0.681
+    },
+    {
+      "home_team": "SAC",
+      "away_team": "CHA",
+      "home_win_prob": 0.039,
+      "predicted_winner": "CHA",
+      "predicted_spread": -39.2,
+      "confidence": 0.961
+    },
+    {
+      "home_team": "LAC",
+      "away_team": "MIN",
+      "home_win_prob": 0.052,
+      "predicted_winner": "MIN",
+      "predicted_spread": -29.3,
+      "confidence": 0.948
+    }
+  ]
+}
