@@ -39,10 +39,11 @@ const CACHE_TTL = {
   leaguestandingsv3:        12 * 60 * 60 * 1000,  // 12 hours
   leagueleaders:            12 * 60 * 60 * 1000,  // 12 hours
   leaguedashplayerstats:    12 * 60 * 60 * 1000,  // 12 hours
-  playergamelog:            12 * 60 * 60 * 1000,  // 12 hours
+  playergamelog:             2 * 60 * 60 * 1000,  // 2 hours
   teamgamelog:               4 * 60 * 60 * 1000,  // 4 hours
   scoreboardv3:              5 * 60 * 1000,        // 5 minutes
   commonteamroster:          7 * 24 * 60 * 60 * 1000, // 7 days
+  commonplayerinfo:          7 * 24 * 60 * 60 * 1000, // 7 days (bio rarely changes)
   boxscoretraditionalv2:    60 * 1000,             // 60 seconds (live games)
   boxscoretraditionalv3:    60 * 1000,             // 60 seconds (live games)
 };
@@ -241,6 +242,39 @@ export async function fetchPlayerGameLog(playerId) {
 }
 
 // ============================================================================
+// PLAYER BIO — height, weight, age, draft, college from commonplayerinfo
+// ============================================================================
+export async function fetchPlayerBio(playerId) {
+  try {
+    const data = await fetchNba("commonplayerinfo", {
+      PlayerID: playerId,
+      LeagueID: "00",
+    });
+    const rows = parseResultSet(data, 0);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    const birthdate = r.BIRTHDATE ? new Date(r.BIRTHDATE) : null;
+    const age = birthdate
+      ? Math.floor((Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+      : null;
+    return {
+      height: r.HEIGHT || null,
+      weight: r.WEIGHT ? `${r.WEIGHT} lbs` : null,
+      age,
+      college: r.SCHOOL || null,
+      country: r.COUNTRY || null,
+      draft: r.DRAFT_YEAR && r.DRAFT_YEAR !== "Undrafted"
+        ? `${r.DRAFT_YEAR} R${r.DRAFT_ROUND} Pick ${r.DRAFT_NUMBER}`
+        : "Undrafted",
+      jersey: r.JERSEY || null,
+      seasonExp: r.SEASON_EXP,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
 // TEAM GAME LOG — last N completed games for a team
 // ============================================================================
 export async function fetchTeamGameLog(teamAbbr, count = 10) {
@@ -283,6 +317,28 @@ function parseGameClock(clock) {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+// Normalize player minutes to "mm:ss" from any format the API returns
+function formatMinutes(raw) {
+  if (!raw) return "0:00";
+  // ISO 8601 duration: "PT30M15.00S"
+  const iso = raw.match?.(/PT(\d+)M([\d.]+)S/);
+  if (iso) {
+    const m = parseInt(iso[1], 10);
+    const s = Math.floor(parseFloat(iso[2]));
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+  // Already "mm:ss" or "m:ss"
+  if (typeof raw === "string" && raw.includes(":")) return raw;
+  // Decimal minutes like 30.25 → "30:15"
+  const n = parseFloat(raw);
+  if (!isNaN(n)) {
+    const m = Math.floor(n);
+    const s = Math.round((n - m) * 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+  return "0:00";
+}
+
 // ============================================================================
 // SCOREBOARD (today's games)
 // ============================================================================
@@ -300,6 +356,10 @@ export async function fetchScoreboard(date = null) {
   // scoreboardv3 has a different response shape
   const games = data.scoreboard?.games || [];
 
+  // If the requested date is more than 24h in the past, all games must be final
+  const reqDate = new Date(localDate + "T23:59:59");
+  const isPastDate = (Date.now() - reqDate.getTime()) > 24 * 60 * 60 * 1000;
+
   return games.map((g) => ({
     id: g.gameId,
     homeTeam: g.homeTeam?.teamTricode,
@@ -307,7 +367,10 @@ export async function fetchScoreboard(date = null) {
     homeScore: g.homeTeam?.score ?? 0,
     awayScore: g.awayTeam?.score ?? 0,
     // gameStatus: 1=pre, 2=live, 3=final (more reliable than period check)
-    status: g.gameStatus === 3 || g.gameStatusText?.toLowerCase().includes("final")
+    // Safeguard: force FINAL for past-date games even if API returns stale status
+    status: isPastDate
+      ? "FINAL"
+      : g.gameStatus === 3 || g.gameStatusText?.toLowerCase().includes("final")
       ? "FINAL"
       : g.gameStatus === 2
       ? "LIVE"
@@ -363,7 +426,7 @@ export async function fetchBoxScore(gameId, homeTeamAbbr, awayTeamAbbr) {
         return {
           name: `${p.firstName} ${p.familyName}`,
           pos: p.position || "",
-          min: s.minutes || "0:00",    // v3 already returns "MM:SS"
+          min: formatMinutes(s.minutes),
           pts: s.points ?? 0,
           reb: s.reboundsTotal ?? 0,
           ast: s.assists ?? 0,
@@ -543,6 +606,12 @@ export async function fetchTickerData() {
 export async function fetchPredictionsToday() {
   const res = await fetch("/api/predictions/today");
   if (!res.ok) throw new Error(`Predictions today ${res.status}`);
+  return res.json();
+}
+
+export async function fetchXGBoostPredictions() {
+  const res = await fetch("/api/predictions/xgboost");
+  if (!res.ok) throw new Error(`XGBoost predictions ${res.status}`);
   return res.json();
 }
 

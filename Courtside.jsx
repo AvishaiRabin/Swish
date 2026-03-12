@@ -12,7 +12,9 @@ import {
   fetchPredictionsToday,
   fetchPredictionHistory,
   fetchPredictionAccuracy,
+  fetchXGBoostPredictions,
   fetchTickerData,
+  fetchPlayerBio,
 } from "./src/nbaApi.js";
 import {
   BarChart,
@@ -30,6 +32,7 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   CartesianGrid,
+  ReferenceLine,
 } from "recharts";
 import {
   Search,
@@ -371,13 +374,15 @@ const mockData = {
   },
 };
 
-// Helper to generate game log entries
+// Helper to generate game log entries (most recent first)
 function generateGameLog(basePts, baseReb, baseAst, games = 20) {
   const opponents = ["BOS", "NYK", "MIL", "LAL", "GSW", "DEN", "OKC", "PHX", "DAL", "CLE", "MIA", "PHI", "IND", "ORL", "MIN", "LAC", "SAC", "HOU", "MEM", "SAS"];
   const results = ["W", "L"];
   const log = [];
   for (let i = 0; i < games; i++) {
-    const d = new Date(2025, 0, 15 + i * 2);
+    // Count backwards from today so most recent game is index 0
+    const d = new Date();
+    d.setDate(d.getDate() - i * 2);
     const pts = Math.max(0, basePts + Math.floor((Math.random() - 0.5) * 18));
     const reb = Math.max(0, baseReb + Math.floor((Math.random() - 0.5) * 8));
     const ast = Math.max(0, baseAst + Math.floor((Math.random() - 0.5) * 6));
@@ -1432,6 +1437,7 @@ function PredictionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [xgboostData, setXgboostData] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -1441,11 +1447,14 @@ function PredictionsPage() {
         ? fetchPredictionsToday
         : tab === "results"
           ? () => fetchPredictionHistory(7)
-          : fetchPredictionAccuracy;
+          : tab === "xgboost"
+            ? fetchXGBoostPredictions
+            : fetchPredictionAccuracy;
     fetcher()
       .then((d) => {
         if (tab === "today") setTodayData(d);
         else if (tab === "results") setHistoryData(d);
+        else if (tab === "xgboost") setXgboostData(d);
         else setAccuracyData(d);
         setLoading(false);
       })
@@ -1457,6 +1466,7 @@ function PredictionsPage() {
 
   const tabs = [
     { key: "today", label: "Today's Picks" },
+    { key: "xgboost", label: "XGBoost Model" },
     { key: "results", label: "Yesterday's Results" },
     { key: "trend", label: "Accuracy Trend" },
   ];
@@ -1772,6 +1782,172 @@ function PredictionsPage() {
     );
   };
 
+  const renderXGBoostTab = () => {
+    if (!xgboostData || !xgboostData.predictions || xgboostData.predictions.length === 0) {
+      return (
+        <div className="card-hover" style={{ padding: 32, textAlign: "center" }}>
+          <Info size={40} style={{ color: "var(--text-muted)", marginBottom: 12 }} />
+          <h3 style={{ margin: "0 0 8px" }}>No XGBoost Predictions</h3>
+          <p style={{ color: "var(--text-muted)", fontSize: 14, maxWidth: 400, margin: "0 auto" }}>
+            XGBoost predictions are generated after Claude predictions. The model needs game log data and a trained model to produce picks.
+          </p>
+        </div>
+      );
+    }
+
+    const chartData = xgboostData.predictions.map((p) => ({
+      matchup: `${p.away_team}@${p.home_team}`,
+      away: parseFloat(((1 - (p.home_win_prob || 0.5)) * 100).toFixed(1)),
+      home: parseFloat(((p.home_win_prob || 0.5) * 100).toFixed(1)),
+      spread: parseFloat((p.predicted_spread || 0).toFixed(1)),
+      winner: p.predicted_winner,
+      home_team: p.home_team,
+      away_team: p.away_team,
+    }));
+
+    const chartH = chartData.length * 44 + 24;
+
+    return (
+      <>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
+            {xgboostData.date ? new Date(xgboostData.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "Today"}
+          </span>
+          <span style={{
+            background: "rgba(99,102,241,0.15)", color: "#818cf8",
+            padding: "4px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
+            XGBoost · 76% test accuracy
+          </span>
+        </div>
+
+        {/* Summary charts */}
+        <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+          {/* Win probability stacked bar */}
+          <div className="card-hover" style={{ flex: "1 1 280px", minWidth: 0, padding: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: "var(--text-secondary)" }}>Win Probability</div>
+            <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)" }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: "rgba(99,102,241,0.45)", display: "inline-block" }} /> Away
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)" }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: "#818cf8", display: "inline-block" }} /> Home
+              </span>
+            </div>
+            <ResponsiveContainer width="100%" height={chartH}>
+              <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 8, top: 0, bottom: 0 }}>
+                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10, fill: "var(--text-muted)" }} />
+                <YAxis type="category" dataKey="matchup" width={88} tick={{ fontSize: 11, fill: "var(--text-secondary)" }} />
+                <Tooltip
+                  formatter={(value, name) => [`${value}%`, name === "home" ? "Home win %" : "Away win %"]}
+                  contentStyle={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", fontSize: 12 }}
+                />
+                <ReferenceLine x={50} stroke="var(--text-muted)" strokeDasharray="4 3" strokeWidth={1} />
+                <Bar dataKey="away" stackId="a" fill="rgba(99,102,241,0.4)" name="away" radius={[3, 0, 0, 3]} />
+                <Bar dataKey="home" stackId="a" fill="#818cf8" name="home" radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Predicted spread */}
+          <div className="card-hover" style={{ flex: "1 1 280px", minWidth: 0, padding: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: "var(--text-secondary)" }}>Predicted Spread (home perspective)</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>Positive = home favored, negative = away favored</div>
+            <ResponsiveContainer width="100%" height={chartH}>
+              <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 8, top: 0, bottom: 0 }}>
+                <XAxis type="number" tickFormatter={(v) => (v > 0 ? `+${v}` : `${v}`)} tick={{ fontSize: 10, fill: "var(--text-muted)" }} />
+                <YAxis type="category" dataKey="matchup" width={88} tick={{ fontSize: 11, fill: "var(--text-secondary)" }} />
+                <Tooltip
+                  formatter={(value) => [value > 0 ? `Home by ${value}` : `Away by ${Math.abs(value)}`, "Predicted margin"]}
+                  contentStyle={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", fontSize: 12 }}
+                />
+                <ReferenceLine x={0} stroke="var(--text-muted)" strokeWidth={1} />
+                <Bar dataKey="spread" name="spread" radius={3}>
+                  {chartData.map((entry, idx) => (
+                    <Cell key={idx} fill={entry.spread >= 0 ? "#818cf8" : "rgba(99,102,241,0.45)"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Per-game cards */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {xgboostData.predictions.map((p, i) => {
+            const homeTeamInfo = TEAMS[p.home_team] || {};
+            const awayTeamInfo = TEAMS[p.away_team] || {};
+            const homePct = Math.round((p.home_win_prob || 0.5) * 100);
+            const awayPct = 100 - homePct;
+            const isHomeWin = p.predicted_winner === p.home_team;
+            const margin = Math.abs(p.predicted_spread || 0).toFixed(1);
+
+            return (
+              <div key={i} className="card-hover" style={{ padding: "16px 20px" }}>
+                {/* Teams row */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, opacity: isHomeWin ? 0.5 : 1 }}>
+                    <TeamLogo abbr={p.away_team} size={32} />
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{p.away_team}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{awayTeamInfo.city || "Away"}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#818cf8" }}>{p.predicted_winner}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>by {margin} · conf {Math.round((p.confidence || 0.5) * 100)}%</div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, opacity: isHomeWin ? 1 : 0.5, flexDirection: "row-reverse" }}>
+                    <TeamLogo abbr={p.home_team} size={32} />
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{p.home_team}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{homeTeamInfo.city || "Home"}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Split probability bar with team colors */}
+                <div style={{ height: 10, borderRadius: 5, overflow: "hidden", display: "flex" }}>
+                  <div style={{
+                    width: `${awayPct}%`,
+                    background: TEAMS[p.away_team]?.color || "#888",
+                    opacity: isHomeWin ? 0.4 : 1,
+                  }} />
+                  <div style={{
+                    width: `${homePct}%`,
+                    background: TEAMS[p.home_team]?.color || "#888",
+                    opacity: isHomeWin ? 1 : 0.4,
+                  }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 11 }}>
+                  <span style={{ color: isHomeWin ? "var(--text-muted)" : (TEAMS[p.away_team]?.color || "var(--text-secondary)"), fontWeight: isHomeWin ? 400 : 600 }}>{awayPct}%</span>
+                  <span style={{ color: isHomeWin ? (TEAMS[p.home_team]?.color || "var(--text-secondary)") : "var(--text-muted)", fontWeight: isHomeWin ? 600 : 400 }}>{homePct}%</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* About */}
+        <div className="card-hover" style={{ marginTop: 24, padding: 20 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>About this model</h3>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.7 }}>
+            XGBoost (eXtreme Gradient Boosting) is a decision-tree ensemble trained on {">"}3,400 NBA games
+            from the 2024-25 and 2025-26 seasons. Features include 5- and 10-game rolling averages (points,
+            FG%, turnovers, +/-), team standings (win%, PPG, net rating), rest days, recent form,
+            and player archetype composition (13 fuzzy archetype scores averaged across each team's roster).
+            Win probability and predicted margin are generated independently, then passed to Claude as a
+            quantitative baseline before its picks are made.
+          </p>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
@@ -1779,7 +1955,7 @@ function PredictionsPage() {
         AI Predictions
       </h1>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
-        Powered by Claude — game picks, spreads, player props & upset alerts
+        Powered by Claude + XGBoost — game picks, spreads, player props & upset alerts
       </p>
 
       <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border-color)", paddingBottom: 0 }}>
@@ -1818,6 +1994,8 @@ function PredictionsPage() {
         </div>
       ) : tab === "today" ? (
         renderTodayTab()
+      ) : tab === "xgboost" ? (
+        renderXGBoostTab()
       ) : tab === "results" ? (
         renderResultsTab()
       ) : (
@@ -3670,6 +3848,10 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [archetypeLabel, setArchetypeLabel] = useState(null);
   const [archetypeScores, setArchetypeScores] = useState(null);
+  const [bioData, setBioData] = useState(null);
+  const [profileData, setProfileData] = useState(null);
+
+  const nbaId = mockPlayer?.nbaId || livePlayerData?.nbaId;
 
   // For live-only players, fetch their game log
   useEffect(() => {
@@ -3681,30 +3863,42 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
     return () => { cancelled = true; };
   }, [livePlayerData?.nbaId, mockPlayer]);
 
-  // Fetch archetype label from player_profiles
+  // Fetch player bio (height, weight, age, draft) from commonplayerinfo
   useEffect(() => {
-    const nbaId = mockPlayer?.nbaId || livePlayerData?.nbaId;
+    if (!nbaId) return;
+    let cancelled = false;
+    fetchPlayerBio(nbaId).then((bio) => {
+      if (!cancelled && bio) setBioData(bio);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [nbaId]);
+
+  // Fetch player profile (archetypes + advanced stats) from player_profiles DB
+  useEffect(() => {
     if (!nbaId) return;
     let cancelled = false;
     fetch(`/api/db/player-profiles?playerId=${nbaId}`)
       .then((r) => r.json())
       .then((rows) => {
-        if (!cancelled && rows?.[0]?.archetypeLabel) {
-          setArchetypeLabel(rows[0].archetypeLabel);
+        if (cancelled || !rows?.[0]) return;
+        const row = rows[0];
+        setProfileData(row);
+        if (row.archetypeLabel) {
+          setArchetypeLabel(row.archetypeLabel);
           const scoreMap = {
-            "Floor General": rows[0].archFloorGeneral,
-            "Scoring PG": rows[0].archScoringPg,
-            "Combo Guard": rows[0].archComboGuard,
-            "Large Playmaker": rows[0].archLargePlaymaker,
-            "3-and-D Wing": rows[0].archThreeAndDWing,
-            "Two-Way Wing": rows[0].archTwoWayWing,
-            "Shot-Creating Wing": rows[0].archShotCreatingWing,
-            "Point Wing": rows[0].archPointWing,
-            "Stretch Big": rows[0].archStretchBig,
-            "Unicorn Big": rows[0].archUnicornBig,
-            "Rim-Running Big": rows[0].archRimRunningBig,
-            "Defensive Anchor": rows[0].archDefensiveAnchor,
-            "Versatile PF": rows[0].archVersatilePf,
+            "Floor General": row.archFloorGeneral,
+            "Scoring PG": row.archScoringPg,
+            "Combo Guard": row.archComboGuard,
+            "Large Playmaker": row.archLargePlaymaker,
+            "3-and-D Wing": row.archThreeAndDWing,
+            "Two-Way Wing": row.archTwoWayWing,
+            "Shot-Creating Wing": row.archShotCreatingWing,
+            "Point Wing": row.archPointWing,
+            "Stretch Big": row.archStretchBig,
+            "Unicorn Big": row.archUnicornBig,
+            "Rim-Running Big": row.archRimRunningBig,
+            "Defensive Anchor": row.archDefensiveAnchor,
+            "Versatile PF": row.archVersatilePf,
           };
           const sorted = Object.entries(scoreMap)
             .filter(([, v]) => v != null && v > 0)
@@ -3714,31 +3908,50 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
       })
       .catch(() => { });
     return () => { cancelled = true; };
-  }, [mockPlayer?.nbaId, livePlayerData?.nbaId]);
+  }, [nbaId]);
 
-  // Build a synthetic player object for live-only players
-  const player = mockPlayer || (livePlayerData ? {
-    id: livePlayerData.id,
-    nbaId: livePlayerData.nbaId,
-    name: livePlayerData.name,
-    team: livePlayerData.team,
-    pos: livePlayerData.pos || "—",
-    jersey: livePlayerData.jersey,
-    height: "—", weight: "—", age: "—", college: "—", draft: "—",
-    seasonAvg: {
-      pts: parseFloat(livePlayerData.ppg) || 0,
-      reb: parseFloat(livePlayerData.rpg) || 0,
-      ast: parseFloat(livePlayerData.apg) || 0,
-      stl: parseFloat(livePlayerData.liveData?.spg) || 0,
-      blk: parseFloat(livePlayerData.liveData?.bpg) || 0,
-      fgPct: parseFloat(livePlayerData.liveData?.fgPct) || 0,
-      tpPct: parseFloat(livePlayerData.liveData?.tpPct) || 0,
-      ftPct: parseFloat(livePlayerData.liveData?.ftPct) || 0,
-      per: null, ts: null, usg: null, ortg: null, drtg: null, bpm: null, vorp: null, ws: null,
-    },
-    gameLog: [],
-    isLiveOnly: true,
-  } : null);
+  // Build a synthetic player object for live-only players, enriched with bio + profile
+  const player = mockPlayer || (livePlayerData ? (() => {
+    const fgPct = parseFloat(livePlayerData.liveData?.fgPct) || 0;
+    const tpPct = parseFloat(livePlayerData.liveData?.tpPct) || 0;
+    const ftPct = parseFloat(livePlayerData.liveData?.ftPct) || 0;
+    // Advanced stats from player_profiles if available
+    const ts = profileData?.tsPct != null ? parseFloat(profileData.tsPct) : null;
+    const usg = profileData?.usgPct != null ? parseFloat(profileData.usgPct) : null;
+    const ortg = profileData?.offRating != null ? parseFloat(profileData.offRating) : null;
+    const drtg = profileData?.defRating != null ? parseFloat(profileData.defRating) : null;
+    const netRtg = profileData?.netRating != null ? parseFloat(profileData.netRating) : null;
+    const pie = profileData?.pie != null ? parseFloat(profileData.pie) : null;
+    const pace = profileData?.pace != null ? parseFloat(profileData.pace) : null;
+    const astPct = profileData?.astPct != null ? parseFloat(profileData.astPct) : null;
+    const astTo = profileData?.astTo != null ? parseFloat(profileData.astTo) : null;
+    return {
+      id: livePlayerData.id,
+      nbaId: livePlayerData.nbaId,
+      name: livePlayerData.name,
+      team: livePlayerData.team,
+      pos: livePlayerData.pos || "—",
+      jersey: bioData?.jersey || livePlayerData.jersey,
+      height: bioData?.height || "—",
+      weight: bioData?.weight || "—",
+      age: bioData?.age ?? "—",
+      college: bioData?.college || "—",
+      draft: bioData?.draft || "—",
+      seasonAvg: {
+        pts: parseFloat(livePlayerData.ppg) || 0,
+        reb: parseFloat(livePlayerData.rpg) || 0,
+        ast: parseFloat(livePlayerData.apg) || 0,
+        stl: parseFloat(livePlayerData.liveData?.spg) || 0,
+        blk: parseFloat(livePlayerData.liveData?.bpg) || 0,
+        fgPct, tpPct, ftPct,
+        per: null, ts, usg, ortg, drtg,
+        netRtg, pie, pace, astPct, astTo,
+        bpm: null, vorp: null, ws: null,
+      },
+      gameLog: [],
+      isLiveOnly: true,
+    };
+  })() : null);
 
   if (!player) {
     return (
@@ -3752,14 +3965,34 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
   }
 
   const team = TEAMS[player.team] || { color: "#444", secondaryColor: "#666", city: player.team, name: "", teamId: null };
-  const avg = player.seasonAvg;
+  // Enrich seasonAvg with profile data (fills in PIE, NET, PACE, AST%, ORtg, DRtg for all players)
+  const avg = useMemo(() => {
+    const base = { ...player.seasonAvg };
+    if (profileData) {
+      if (base.pie == null && profileData.pie != null) base.pie = parseFloat(profileData.pie);
+      if (base.netRtg == null && profileData.netRating != null) base.netRtg = parseFloat(profileData.netRating);
+      if (base.pace == null && profileData.pace != null) base.pace = parseFloat(profileData.pace);
+      if (base.astPct == null && profileData.astPct != null) base.astPct = parseFloat(profileData.astPct);
+      if (base.astTo == null && profileData.astTo != null) base.astTo = parseFloat(profileData.astTo);
+      if (base.ts == null && profileData.tsPct != null) base.ts = parseFloat(profileData.tsPct);
+      if (base.usg == null && profileData.usgPct != null) base.usg = parseFloat(profileData.usgPct);
+      if (base.ortg == null && profileData.offRating != null) base.ortg = parseFloat(profileData.offRating);
+      if (base.drtg == null && profileData.defRating != null) base.drtg = parseFloat(profileData.defRating);
+    }
+    // Estimate PER from PIE when PER isn't available (PIE×1.5 ≈ PER)
+    if (base.per == null && base.pie != null) base.per = +(base.pie * 1.5).toFixed(1);
+    return base;
+  }, [player.seasonAvg, profileData]);
+  // Normalize to descending order (most recent first) for the table
+  // Live data from NBA API is already descending; mock data is generated descending too
   const log = mockPlayer ? player.gameLog : (liveGameLog || []);
 
-  // Compute rolling averages
+  // Compute rolling averages on chronological (ascending) order so G1=oldest, GN=newest
   const rollingData = useMemo(() => {
-    return log.map((game, idx) => {
+    const chronoLog = [...log].reverse();
+    return chronoLog.map((game, idx) => {
       const start = Math.max(0, idx - rollingWindow + 1);
-      const window = log.slice(start, idx + 1);
+      const window = chronoLog.slice(start, idx + 1);
       const avgPts = window.reduce((s, g) => s + g.pts, 0) / window.length;
       const avgReb = window.reduce((s, g) => s + g.reb, 0) / window.length;
       const avgAst = window.reduce((s, g) => s + g.ast, 0) / window.length;
@@ -3783,26 +4016,31 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
   ];
 
   // Radar chart data (normalized 0-100)
+  const impactVal = avg.pie ?? avg.per ?? 0;
+  const effVal = avg.ts ?? 0;
   const radarData = [
     { stat: "Scoring", value: Math.min(100, (avg.pts / 35) * 100) },
     { stat: "Rebounding", value: Math.min(100, (avg.reb / 14) * 100) },
     { stat: "Playmaking", value: Math.min(100, (avg.ast / 11) * 100) },
     { stat: "Defense", value: Math.min(100, ((avg.stl + avg.blk) / 4.5) * 100) },
-    { stat: "Efficiency", value: Math.min(100, ((avg.ts ?? 0) / 68) * 100) },
-    { stat: "Impact", value: Math.min(100, ((avg.per ?? 0) / 35) * 100) },
+    { stat: "Efficiency", value: Math.min(100, (effVal / 68) * 100) },
+    { stat: "Impact", value: Math.min(100, (impactVal / 20) * 100) },
   ];
 
-  // Advanced stats with descriptions (hidden for live-only players that lack them)
-  const advancedStats = avg.per != null ? [
-    { key: "PER", value: avg.per.toFixed(1), desc: "Player Efficiency Rating — a per-minute rating of a player's performance. League average is 15.0." },
-    { key: "TS%", value: avg.ts.toFixed(1), desc: "True Shooting % — measures shooting efficiency including 2P, 3P, and FT. League average ~57%." },
-    { key: "USG%", value: avg.usg.toFixed(1), desc: "Usage Rate — percentage of team plays used by the player while on court." },
-    { key: "ORtg", value: avg.ortg, desc: "Offensive Rating — points produced per 100 possessions. Higher is better." },
-    { key: "DRtg", value: avg.drtg, desc: "Defensive Rating — points allowed per 100 possessions. Lower is better." },
-    { key: "BPM", value: avg.bpm.toFixed(1), desc: "Box Plus/Minus — box score estimate of points per 100 possessions above average." },
-    { key: "VORP", value: avg.vorp.toFixed(1), desc: "Value Over Replacement Player — estimate of points contributed over a replacement-level player." },
-    { key: "WS", value: avg.ws.toFixed(1), desc: "Win Shares — estimate of the number of wins contributed by a player." },
-  ] : [];
+  // Advanced stats — build from whatever data is available
+  const advancedStats = [
+    avg.per != null   && { key: "PER",   value: Number(avg.per).toFixed(1),  desc: "Player Efficiency Rating — a per-minute rating of a player's performance. League average is 15.0. Estimated from PIE when official PER is unavailable." },
+    avg.ts != null    && { key: "TS%",   value: Number(avg.ts).toFixed(1),   desc: "True Shooting % — measures shooting efficiency including 2P, 3P, and FT. League average ~57%." },
+    avg.usg != null   && { key: "USG%",  value: Number(avg.usg).toFixed(1),  desc: "Usage Rate — percentage of team plays used by the player while on court." },
+    avg.ortg != null  && { key: "ORtg",  value: Number(avg.ortg).toFixed(1), desc: "Offensive Rating — points produced per 100 possessions. Higher is better." },
+    avg.drtg != null  && { key: "DRtg",  value: Number(avg.drtg).toFixed(1), desc: "Defensive Rating — points allowed per 100 possessions. Lower is better." },
+    avg.netRtg != null && { key: "NET",  value: (avg.netRtg >= 0 ? "+" : "") + Number(avg.netRtg).toFixed(1), desc: "Net Rating — point differential per 100 possessions (ORtg minus DRtg)." },
+    avg.pace != null  && { key: "PACE",  value: Number(avg.pace).toFixed(1), desc: "Pace — number of possessions per 48 minutes the player's team uses." },
+    avg.astPct != null && { key: "AST%", value: Number(avg.astPct).toFixed(1), desc: "Assist Percentage — percentage of teammate field goals assisted while on court." },
+    avg.bpm != null   && { key: "BPM",   value: Number(avg.bpm).toFixed(1),  desc: "Box Plus/Minus — box score estimate of points per 100 possessions above average." },
+    avg.vorp != null  && { key: "VORP",  value: Number(avg.vorp).toFixed(1), desc: "Value Over Replacement Player — estimate of points contributed over a replacement-level player." },
+    avg.ws != null    && { key: "WS",    value: Number(avg.ws).toFixed(1),   desc: "Win Shares — estimate of the number of wins contributed by a player." },
+  ].filter(Boolean);
 
   const ChartTooltipContent = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -4039,6 +4277,11 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
             <TrendingUp size={14} style={{ color: "var(--accent-green)" }} />
             Advanced Stats
           </h3>
+          {advancedStats.length === 0 && (
+            <div style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: 16 }}>
+              Advanced stats unavailable for this player
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {advancedStats.map((stat) => (
               <div
@@ -5709,6 +5952,7 @@ function GameDetailPage({ gameId, onBack, fallbackGame = null }) {
   const mockDetail = mockData.gameDetails[gameId];
   const [liveBoxScore, setLiveBoxScore] = useState(null);
   const [boxScoreLoading, setBoxScoreLoading] = useState(false);
+  const [boxScoreTeam, setBoxScoreTeam] = useState("away"); // "away" | "home"
 
   // If we have no game object (e.g. direct navigation without fallback),
   // try to find it by scanning recent scoreboards (today + yesterday).
@@ -5835,23 +6079,8 @@ function GameDetailPage({ gameId, onBack, fallbackGame = null }) {
 
   const renderBoxScore = (teamAbbr, players) => {
     if (!players || players.length === 0) return null;
-    const team = TEAMS[teamAbbr];
     return (
-      <div style={{ marginBottom: 28 }}>
-        <h3
-          className="font-display"
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            marginBottom: 10,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <TeamLogo abbr={teamAbbr} size={22} />
-          {team.city} {team.name}
-        </h3>
+      <div>
         <div
           style={{
             background: "var(--bg-secondary)",
@@ -6152,12 +6381,38 @@ function GameDetailPage({ gameId, onBack, fallbackGame = null }) {
       {/* Box Scores */}
       {hasDetail && (
         <div>
-          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-            <Layers size={18} style={{ color: "var(--accent-blue)" }} />
-            Box Score
-          </h2>
-          {renderBoxScore(game.awayTeam, detail.boxScore?.[awayKey])}
-          {renderBoxScore(game.homeTeam, detail.boxScore?.[homeKey])}
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14 }}>
+            <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+              <Layers size={18} style={{ color: "var(--accent-blue)" }} />
+              Box Score
+            </h2>
+            <div style={{ display: "flex", gap: 4 }}>
+              {[
+                { key: "away", abbr: game.awayTeam },
+                { key: "home", abbr: game.homeTeam },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setBoxScoreTeam(t.key)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border-color)",
+                    background: boxScoreTeam === t.key ? (TEAMS[t.abbr]?.color || "var(--accent)") : "transparent",
+                    color: boxScoreTeam === t.key ? "#fff" : "var(--text-secondary)",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "'Inter', sans-serif",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <TeamLogo abbr={t.abbr} size={16} />
+                  {t.abbr}
+                </button>
+              ))}
+            </div>
+          </div>
+          {boxScoreTeam === "away"
+            ? renderBoxScore(game.awayTeam, detail.boxScore?.[awayKey])
+            : renderBoxScore(game.homeTeam, detail.boxScore?.[homeKey])}
         </div>
       )}
 

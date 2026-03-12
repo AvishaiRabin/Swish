@@ -233,6 +233,10 @@ for (const a of [
 ]) {
   try { db.exec(`ALTER TABLE player_profiles ADD COLUMN arch_${a} REAL`); } catch {}
 }
+// Off/Def rating columns (already fetched, were not being stored)
+for (const col of ["off_rating", "def_rating"]) {
+  try { db.exec(`ALTER TABLE player_profiles ADD COLUMN ${col} REAL`); } catch {}
+}
 
 // ---------------------------------------------------------------------------
 // NBA API helpers
@@ -564,8 +568,16 @@ async function refreshPlayerProfiles() {
   const seasonPpgStmt = db.prepare("SELECT ppg FROM players WHERE player_id = ?");
 
   const ins = db.prepare(`
-    INSERT OR REPLACE INTO player_profiles VALUES
-    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT OR REPLACE INTO player_profiles (
+      player_id, name, team,
+      usg_pct, ts_pct, ast_pct, ast_to, oreb_pct, dreb_pct, net_rating, pie, pace,
+      touches, time_of_poss, front_ct_touches, elbow_touches, post_touches, paint_touches,
+      passes_made, potential_ast, ast_pts_created,
+      drives, drive_pts, drive_fg_pct, drive_ast,
+      contested_shots, deflections, screen_assists, charges_drawn,
+      l15_ppg, l15_usg_pct, l15_ts_pct, form_factor,
+      updated_at, off_rating, def_rating
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
 
   let count = 0;
@@ -612,7 +624,9 @@ async function refreshPlayerProfiles() {
         hustle.SCREEN_ASSISTS  ?? null, hustle.CHARGES_DRAWN ?? null,
         // Recent form (L15)
         l15Ppg, l15UsgPct, l15TsPct, formFactor,
-        Date.now()
+        Date.now(),
+        // Off/Def rating
+        adv.OFF_RATING ?? null, adv.DEF_RATING ?? null
       );
       count++;
     }
@@ -1020,10 +1034,32 @@ async function gatherPredictionContext() {
     ? `Your historical accuracy (last 30 days): ${last30.wins}/${last30.total} (${((last30.wins / last30.total) * 100).toFixed(1)}%). Adjust your approach based on past errors.`
     : "No historical predictions to reference yet.";
 
+  // Load XGBoost predictions if available, match by team abbrs
+  let xgboostText = "";
+  try {
+    const xgPredPath = path.join(__dirname, "ml", "models", "predictions.json");
+    if (fs.existsSync(xgPredPath)) {
+      const xgPreds = JSON.parse(fs.readFileSync(xgPredPath, "utf8"));
+      // Only use if predictions are from today
+      const todayPreds = xgPreds.date === dateStr ? (xgPreds.predictions || []) : [];
+      if (todayPreds.length > 0) {
+        const lines = todayPreds.map((p) => {
+          const winPct = p.home_win_prob != null ? `${(p.home_win_prob * 100).toFixed(1)}%` : "?%";
+          const spread = p.predicted_spread != null ? (p.predicted_spread > 0 ? `+${p.predicted_spread.toFixed(1)}` : p.predicted_spread.toFixed(1)) : "?";
+          const conf = p.confidence != null ? ` conf:${(p.confidence * 100).toFixed(0)}%` : "";
+          return `${p.away_team}@${p.home_team}: ${p.predicted_winner} ${winPct} win prob, spread ${spread}${conf}`;
+        });
+        xgboostText = `\n\n--- QUANTITATIVE MODEL (XGBoost, 107 features) ---\n${lines.join("\n")}\nUse this as a statistical baseline. Note where your qualitative reasoning agrees or diverges, and explain why.`;
+      }
+    }
+  } catch (e) {
+    console.warn("[Predictions] Could not load XGBoost output:", e.message);
+  }
+
   return {
     games: upcomingGames,
     dateStr,
-    context: `${accuracyText}\n\n--- STANDINGS ---\n${standingsText}\n\n--- TODAY'S GAMES ---\n${gamesText}\n\n--- KEY PLAYERS ---\n${playersText}`,
+    context: `${accuracyText}\n\n--- STANDINGS ---\n${standingsText}\n\n--- TODAY'S GAMES ---\n${gamesText}\n\n--- KEY PLAYERS ---\n${playersText}${xgboostText}`,
   };
 }
 
@@ -1186,8 +1222,52 @@ async function gradePredictions() {
   }
 }
 
+async function runXGBoostPredictions() {
+  const script = path.join(__dirname, "ml", "xgboost_model.py");
+  const modelFile = path.join(__dirname, "ml", "models", "xgb_win.json");
+  if (!fs.existsSync(script)) {
+    console.warn("[XGBoost] ml/xgboost_model.py not found, skipping");
+    return;
+  }
+
+  // Write today's matchups from scoreboard so XGBoost runs independently of Claude
+  const dateStr = todayDateStr();
+  try {
+    const scoreboardData = await fetchNBAEndpoint("scoreboardv3", { LeagueID: "00", GameDate: dateStr });
+    const upcoming = (scoreboardData.scoreboard?.games || []).filter((g) => g.gameStatus === 1);
+    const matchups = upcoming.map((g) => ({
+      home_team: TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode,
+      away_team: TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode,
+    })).filter((m) => m.home_team && m.away_team);
+    const matchupsPath = path.join(__dirname, "ml", "models", "matchups.json");
+    fs.writeFileSync(matchupsPath, JSON.stringify({ date: dateStr, matchups }, null, 2));
+    console.log(`[XGBoost] Wrote ${matchups.length} matchups for ${dateStr}`);
+  } catch (e) {
+    console.warn("[XGBoost] Could not write matchups.json:", e.message);
+  }
+
+  // Train if no model exists, otherwise just predict
+  const args = fs.existsSync(modelFile) ? ["--predict"] : [];
+  return new Promise((resolve) => {
+    const proc = spawn("python", [script, ...args], { cwd: __dirname });
+    proc.stdout.on("data", (d) => console.log("[XGBoost]", d.toString().trim()));
+    proc.stderr.on("data", (d) => console.warn("[XGBoost]", d.toString().trim()));
+    proc.on("close", (code) => {
+      if (code === 0) console.log("[XGBoost] Done");
+      else console.warn(`[XGBoost] Exited with code ${code}`);
+      resolve();
+    });
+    proc.on("error", (e) => {
+      console.warn("[XGBoost] Failed to spawn python:", e.message);
+      resolve();
+    });
+  });
+}
+
 async function runPredictionJobs() {
   console.log("[PredictionJobs] Starting...");
+  // XGBoost runs first so its output can be included in Claude's context
+  try { await runXGBoostPredictions(); } catch (e) { console.error("[XGBoost] Error:", e.message); }
   try { await generatePredictions(); } catch (e) { console.error("[Predictions] Error:", e.message, e.stack); }
   try { await gradePredictions(); } catch (e) { console.error("[Grading] Error:", e.message); }
   console.log("[PredictionJobs] Done.");
@@ -1384,6 +1464,8 @@ app.get("/api/db/player-profiles", (req, res) => {
     netRating:       r.net_rating?.toFixed(1) ?? null,
     pie:             r.pie != null       ? +(r.pie * 100).toFixed(1)      : null,
     pace:            r.pace?.toFixed(1)  ?? null,
+    offRating:       r.off_rating?.toFixed(1) ?? null,
+    defRating:       r.def_rating?.toFixed(1) ?? null,
     // Touches
     touches:         r.touches?.toFixed(1)          ?? null,
     timeOfPoss:      r.time_of_poss?.toFixed(1)     ?? null,
@@ -1548,6 +1630,19 @@ app.get("/api/predictions/today", (_req, res) => {
       playerProps:     JSON.parse(r.player_props || "[]"),
     })),
   });
+});
+
+app.get("/api/predictions/xgboost", (_req, res) => {
+  const predPath = path.join(__dirname, "ml", "models", "predictions.json");
+  try {
+    if (!fs.existsSync(predPath)) return res.json({ predictions: [] });
+    const data = JSON.parse(fs.readFileSync(predPath, "utf-8"));
+    // Flag as stale if the predictions aren't from today
+    if (data.date && data.date !== todayDateStr()) data.stale = true;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/predictions/history", (req, res) => {
