@@ -15,6 +15,9 @@ import {
   fetchXGBoostPredictions,
   fetchTickerData,
   fetchPlayerBio,
+  fetchTeamArchetypeMatchups,
+  fetchPlayerArchetypeMatchups,
+  fetchTeamArchetypes,
 } from "./src/nbaApi.js";
 import {
   BarChart,
@@ -3041,20 +3044,25 @@ function tickerTeamColor(abbr) {
   const team = TEAMS[abbr];
   if (!team) return "var(--text-secondary)";
 
-  const score = (hex) => {
+  const darken = (hex) => {
+    const h = hex.replace("#", "");
+    const r = Math.round(parseInt(h.slice(0, 2), 16) * 0.5);
+    const g = Math.round(parseInt(h.slice(2, 4), 16) * 0.5);
+    const b = Math.round(parseInt(h.slice(4, 6), 16) * 0.5);
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+  };
+
+  const isColorful = (hex) => {
     const h = hex.replace("#", "");
     const r = parseInt(h.slice(0, 2), 16);
     const g = parseInt(h.slice(2, 4), 16);
     const b = parseInt(h.slice(4, 6), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
-    // Usable = bright enough AND colorful enough
-    return luminance >= 0.18 && chroma >= 0.15;
+    return (Math.max(r, g, b) - Math.min(r, g, b)) / 255 >= 0.15;
   };
 
-  if (score(team.color)) return team.color;
-  if (score(team.secondaryColor)) return team.secondaryColor;
-  return "var(--text-primary)"; // e.g. SAS silver + BKN black → plain white
+  if (isColorful(team.color)) return darken(team.color);
+  if (isColorful(team.secondaryColor)) return darken(team.secondaryColor);
+  return "var(--text-primary)";
 }
 
 function NewsTicker({ items }) {
@@ -3078,7 +3086,7 @@ function NewsTicker({ items }) {
           letterSpacing: "0.6px",
           textTransform: "uppercase",
           fontFamily: "'JetBrains Mono', monospace",
-          color: isLive ? "#22c55e" : isFinal ? "var(--text-muted)" : "var(--accent)",
+          color: isLive ? "#22c55e" : isFinal ? "var(--text-secondary)" : "var(--accent)",
           minWidth: 52,
         }}>
           {isLive ? "LIVE" : game.dateLabel}
@@ -3086,33 +3094,33 @@ function NewsTicker({ items }) {
 
         {/* Away team */}
         <span style={{
-          fontWeight: awayWon ? 700 : 500,
+          fontWeight: awayWon ? 700 : 600,
           color: tickerTeamColor(game.awayTeam),
           fontSize: 13,
           fontFamily: "'JetBrains Mono', monospace",
-          opacity: isFinal && !awayWon ? 0.6 : 1,
+          opacity: isFinal && !awayWon ? 0.75 : 1,
         }}>
           {game.awayTeam}
         </span>
 
         {/* Score or vs */}
         {(isFinal || isLive) ? (
-          <span style={{ color: "var(--text-muted)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
-            <span style={{ fontWeight: awayWon ? 700 : 400, color: awayWon ? "var(--text-primary)" : "var(--text-secondary)" }}>{game.awayScore}</span>
+          <span style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontWeight: awayWon ? 700 : 500, color: awayWon ? "var(--text-primary)" : "var(--text-secondary)" }}>{game.awayScore}</span>
             {" – "}
-            <span style={{ fontWeight: homeWon ? 700 : 400, color: homeWon ? "var(--text-primary)" : "var(--text-secondary)" }}>{game.homeScore}</span>
+            <span style={{ fontWeight: homeWon ? 700 : 500, color: homeWon ? "var(--text-primary)" : "var(--text-secondary)" }}>{game.homeScore}</span>
           </span>
         ) : (
-          <span style={{ color: "var(--text-muted)", fontSize: 11 }}>@</span>
+          <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>@</span>
         )}
 
         {/* Home team */}
         <span style={{
-          fontWeight: homeWon ? 700 : 500,
+          fontWeight: homeWon ? 700 : 600,
           color: tickerTeamColor(game.homeTeam),
           fontSize: 13,
           fontFamily: "'JetBrains Mono', monospace",
-          opacity: isFinal && !homeWon ? 0.6 : 1,
+          opacity: isFinal && !homeWon ? 0.75 : 1,
         }}>
           {game.homeTeam}
         </span>
@@ -3124,13 +3132,13 @@ function NewsTicker({ items }) {
           </span>
         )}
         {!isFinal && !isLive && game.scheduledTime && (
-          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)", fontFamily: "'JetBrains Mono', monospace" }}>
             {game.scheduledTime}
           </span>
         )}
 
         {/* Separator */}
-        <span style={{ color: "var(--border-color)", margin: "0 10px", fontSize: 14 }}>·</span>
+        <span style={{ color: "var(--text-secondary)", margin: "0 10px", fontSize: 14 }}>·</span>
       </span>
     );
   };
@@ -3910,6 +3918,17 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
     return () => { cancelled = true; };
   }, [nbaId]);
 
+  // Fetch archetype matchup profile
+  const [matchupProfile, setMatchupProfile] = useState(null);
+  useEffect(() => {
+    if (!nbaId) return;
+    let cancelled = false;
+    fetchPlayerArchetypeMatchups(nbaId).then((data) => {
+      if (!cancelled && data) setMatchupProfile(data);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [nbaId]);
+
   // Build a synthetic player object for live-only players, enriched with bio + profile
   const player = mockPlayer || (livePlayerData ? (() => {
     const fgPct = parseFloat(livePlayerData.liveData?.fgPct) || 0;
@@ -4331,6 +4350,113 @@ function PlayerDetailPage({ playerId, livePlayerData, onBack }) {
           </div>
         </div>
       </div>
+
+      {/* ===== MATCHUP PROFILE: vs Opponent Offense + Defense ===== */}
+      {(matchupProfile?.vsDefense?.length > 0 || matchupProfile?.vsOffense?.length > 0) && (() => {
+        const baseline = matchupProfile.seasonBaseline;
+        const deltaColor = (v) => v > 0 ? "#22c55e" : v < 0 ? "#ef4444" : "var(--text-muted)";
+        const deltaStr = (v) => (v > 0 ? "+" : "") + v;
+
+        const renderPlayerMatchupTable = (title, icon, data, bestLabel, worstLabel) => (
+          <div>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: 6 }}>
+              {icon} {title}
+            </h3>
+            {bestLabel && worstLabel && (() => {
+              const best = data.find((d) => d.label === bestLabel);
+              const worst = data.find((d) => d.label === worstLabel);
+              return (
+                <div style={{ background: "var(--bg-tertiary)", borderRadius: 8, padding: "10px 14px", marginBottom: 10, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                  Most efficient vs <span style={{ fontWeight: 700, color: "#22c55e" }}>{bestLabel}</span>
+                  {" "}({best?.ptsPer100} pts/100, {best?.tsPct}% TS),
+                  least efficient vs <span style={{ fontWeight: 700, color: "#ef4444" }}>{worstLabel}</span>
+                  {" "}({worst?.ptsPer100} pts/100, {worst?.tsPct}% TS)
+                </div>
+              );
+            })()}
+            <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 70px 60px 60px 55px 55px", padding: "8px 14px", fontSize: 10, fontWeight: 600, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <span>Archetype</span>
+                <span className="stat-number" style={{ textAlign: "center" }}>GP</span>
+                <span className="stat-number" style={{ textAlign: "center" }}>Pts/100</span>
+                <span className="stat-number" style={{ textAlign: "center" }}>TS%</span>
+                <span className="stat-number" style={{ textAlign: "center" }}>Usage</span>
+                <span className="stat-number" style={{ textAlign: "center" }}>A/TO</span>
+                <span className="stat-number" style={{ textAlign: "center" }}>3P%</span>
+              </div>
+              {baseline && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 70px 60px 60px 55px 55px", padding: "6px 14px", fontSize: 11, borderBottom: "1px solid var(--border-color)", background: "var(--bg-tertiary)", color: "var(--text-muted)" }}>
+                  <span style={{ fontWeight: 600, fontStyle: "italic" }}>Season Avg</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>{baseline.games}</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>{baseline.ptsPer100}</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>{baseline.tsPct}%</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>{baseline.usage}</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>{baseline.astTov}</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>—</span>
+                </div>
+              )}
+              {data.map((s, i) => {
+                const isBest = s.label === bestLabel;
+                const isWorst = s.label === worstLabel;
+                return (
+                  <div key={s.label} style={{
+                    display: "grid", gridTemplateColumns: "1fr 40px 70px 60px 60px 55px 55px",
+                    padding: "10px 14px", fontSize: 13,
+                    borderBottom: i < data.length - 1 ? "1px solid var(--border-color)" : "none",
+                    background: isBest ? "rgba(34,197,94,0.06)" : isWorst ? "rgba(239,68,68,0.06)" : "transparent",
+                  }}>
+                    <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                      {s.label}
+                      {isBest && <span style={{ fontSize: 8, background: "rgba(34,197,94,0.15)", color: "#22c55e", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>BEST</span>}
+                      {isWorst && <span style={{ fontSize: 8, background: "rgba(239,68,68,0.15)", color: "#ef4444", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>WORST</span>}
+                    </span>
+                    <span className="stat-number" style={{ textAlign: "center" }}>{s.games}</span>
+                    <span className="stat-number" style={{ textAlign: "center" }}>
+                      {s.ptsPer100}
+                      {s.ptsPer100Delta !== 0 && <span style={{ fontSize: 9, marginLeft: 3, color: deltaColor(s.ptsPer100Delta) }}>{deltaStr(s.ptsPer100Delta)}</span>}
+                    </span>
+                    <span className="stat-number" style={{ textAlign: "center" }}>
+                      {s.tsPct}%
+                      {s.tsPctDelta !== 0 && <span style={{ fontSize: 9, marginLeft: 2, color: deltaColor(s.tsPctDelta) }}>{deltaStr(s.tsPctDelta)}</span>}
+                    </span>
+                    <span className="stat-number" style={{ textAlign: "center" }}>
+                      {s.usage}
+                      {s.usageDelta !== 0 && <span style={{ fontSize: 9, marginLeft: 2, color: deltaColor(s.usageDelta) }}>{deltaStr(s.usageDelta)}</span>}
+                    </span>
+                    <span className="stat-number" style={{ textAlign: "center" }}>{s.astTov}</span>
+                    <span className="stat-number" style={{ textAlign: "center" }}>{s.fg3Pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+
+        return (
+          <div style={{ marginBottom: 28 }}>
+            <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+              <Shield size={18} style={{ color: "var(--accent-blue)" }} />
+              Matchup Profile
+            </h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              {matchupProfile.vsDefense?.length > 0 && renderPlayerMatchupTable(
+                "vs Opponent Defense",
+                <Shield size={13} style={{ color: "var(--accent-blue)" }} />,
+                matchupProfile.vsDefense,
+                matchupProfile.bestVsDefense,
+                matchupProfile.worstVsDefense,
+              )}
+              {matchupProfile.vsOffense?.length > 0 && renderPlayerMatchupTable(
+                "vs Opponent Offense",
+                <Target size={13} style={{ color: "var(--accent)" }} />,
+                matchupProfile.vsOffense,
+                matchupProfile.bestVsOffense,
+                matchupProfile.worstVsOffense,
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ===== GAME LOG ===== */}
       <div>
@@ -5056,8 +5182,8 @@ function ComparisonPage() {
       ortg: d ? d.teamStats.ortg : 110.0,
       drtg: d ? d.teamStats.drtg : 112.0,
       netRtg: d ? d.teamStats.netRtg : 0,
-      reb: d ? (d.roster.reduce((s, p) => s + p.rpg, 0) / d.roster.length * 5) : 42,
-      ast: d ? (d.roster.reduce((s, p) => s + p.apg, 0) / d.roster.length * 5) : 24,
+      reb: d?.roster?.length ? (d.roster.reduce((s, p) => s + p.rpg, 0) / d.roster.length * 5) : 42,
+      ast: d?.roster?.length ? (d.roster.reduce((s, p) => s + p.apg, 0) / d.roster.length * 5) : 24,
     };
 
     if (statMode === "totals") {
@@ -5646,6 +5772,31 @@ function TeamDetailPage({ teamAbbr, onBack }) {
     return () => { cancelled = true; };
   }, [teamAbbr, liveData.isLive]);
 
+  // Fetch archetype matchup data
+  const [archetypeMatchups, setArchetypeMatchups] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTeamArchetypeMatchups(teamAbbr)
+      .then((data) => { if (!cancelled && data) setArchetypeMatchups(data); })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, [teamAbbr]);
+
+  // Fetch team offensive/defensive archetypes (all teams for league ranking)
+  const [teamArchetypes, setTeamArchetypes] = useState(null);
+  const [allTeamArchetypes, setAllTeamArchetypes] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTeamArchetypes().then((data) => {
+      if (!cancelled && data?.length) {
+        setAllTeamArchetypes(data);
+        const mine = data.find((t) => t.team === teamAbbr);
+        if (mine) setTeamArchetypes(mine);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [teamAbbr]);
+
   if (!team) {
     return (
       <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
@@ -5720,6 +5871,126 @@ function TeamDetailPage({ teamAbbr, onBack }) {
           </div>
         </div>
       </div>
+
+      {/* ===== TEAM IDENTITY: Offensive + Defensive Archetypes ===== */}
+      {teamArchetypes && (() => {
+        const allTeams = allTeamArchetypes || [];
+        const leagueRank = (key) => {
+          if (allTeams.length < 2) return null;
+          const sorted = [...allTeams].sort((a, b) => (b[key] || 0) - (a[key] || 0));
+          return sorted.findIndex((t) => t.team === teamAbbr) + 1;
+        };
+        const rankLabel = (r) => r ? `#${r}` : "";
+        const offStyles = [
+          { key: "off_pace_space", label: "Pace & Space" },
+          { key: "off_paint_beast", label: "Paint Beast" },
+          { key: "off_motion", label: "Motion" },
+          { key: "off_iso_heavy", label: "ISO Heavy" },
+          { key: "off_transition", label: "Transition" },
+          { key: "off_pick_roll", label: "Pick & Roll" },
+        ];
+        const defStyles = [
+          { key: "def_perimeter_lock", label: "Perimeter Lock" },
+          { key: "def_rim_protection", label: "Rim Protection" },
+          { key: "def_switchable", label: "Switchable" },
+          { key: "def_blitz_press", label: "Blitz/Press" },
+          { key: "def_pack_paint", label: "Pack Paint" },
+          { key: "def_help_zone", label: "Help/Zone" },
+        ];
+        const maxOff = Math.max(...offStyles.map((s) => teamArchetypes[s.key] || 0), 0.01);
+        const maxDef = Math.max(...defStyles.map((s) => teamArchetypes[s.key] || 0), 0.01);
+
+        const renderBar = (style, max, accentColor, bgColor) => {
+          const val = teamArchetypes[style.key] || 0;
+          const pct = (val / max) * 100;
+          const rank = leagueRank(style.key);
+          const isTop = rank && rank <= 5;
+          return (
+            <div key={style.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+              <span style={{ width: 100, fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textAlign: "right", flexShrink: 0 }}>{style.label}</span>
+              <div style={{ flex: 1, height: 18, background: "var(--bg-tertiary)", borderRadius: 4, overflow: "hidden", position: "relative" }}>
+                <div style={{
+                  height: "100%", borderRadius: 4,
+                  background: isTop ? accentColor : bgColor,
+                  width: `${pct}%`, transition: "width 0.4s",
+                  minWidth: pct > 0 ? 4 : 0,
+                }} />
+              </div>
+              <span className="stat-number" style={{ width: 36, fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textAlign: "right" }}>
+                {(val * 100).toFixed(0)}
+              </span>
+              {rank && (
+                <span className="stat-number" style={{
+                  width: 28, fontSize: 10, fontWeight: 700, textAlign: "center",
+                  color: rank <= 5 ? accentColor : rank <= 15 ? "var(--text-secondary)" : "var(--text-muted)",
+                }}>
+                  {rankLabel(rank)}
+                </span>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 }}>
+            {/* Offensive Identity */}
+            <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: 20 }}>
+              <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                <Target size={14} style={{ color: "var(--accent)" }} />
+                Offensive Identity
+              </h3>
+              <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ background: "rgba(249,115,22,0.12)", color: "var(--accent)", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                  {teamArchetypes.off_archetype?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {offStyles.map((s) => renderBar(s, maxOff, "var(--accent)", "rgba(249,115,22,0.35)"))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border-color)" }}>
+                {[
+                  { label: "Pace", value: teamArchetypes.pace?.toFixed(1) },
+                  { label: "3PA Rate", value: teamArchetypes.fg3a_rate ? (teamArchetypes.fg3a_rate * 100).toFixed(1) + "%" : "—" },
+                  { label: "AST Rate", value: teamArchetypes.ast_rate ? (teamArchetypes.ast_rate * 100).toFixed(1) + "%" : "—" },
+                ].map((s) => (
+                  <div key={s.label} style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</div>
+                    <div className="stat-number" style={{ fontSize: 16, fontWeight: 700 }}>{s.value || "—"}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Defensive Identity */}
+            <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: 20 }}>
+              <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                <Shield size={14} style={{ color: "var(--accent-blue)" }} />
+                Defensive Identity
+              </h3>
+              <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ background: "rgba(59,130,246,0.12)", color: "var(--accent-blue)", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                  {teamArchetypes.def_archetype?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {defStyles.map((s) => renderBar(s, maxDef, "var(--accent-blue)", "rgba(59,130,246,0.35)"))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border-color)" }}>
+                {[
+                  { label: "STL/G", value: teamArchetypes.stl_rate?.toFixed(1) },
+                  { label: "BLK/G", value: teamArchetypes.blk_rate?.toFixed(1) },
+                  { label: "Deflections", value: teamArchetypes.deflection_rate?.toFixed(1) },
+                ].map((s) => (
+                  <div key={s.label} style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</div>
+                    <div className="stat-number" style={{ fontSize: 16, fontWeight: 700 }}>{s.value || "—"}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ===== STATS DASHBOARD: Ratings Chart + Four Factors ===== */}
       {detail?.teamStats && (
@@ -5821,6 +6092,140 @@ function TeamDetailPage({ teamAbbr, onBack }) {
           </div>
         </div>
       )}
+
+      {/* ===== ARCHETYPE MATCHUPS: vs Opponent Offense + vs Opponent Defense ===== */}
+      {(archetypeMatchups?.vsOffense?.length > 0 || archetypeMatchups?.vsDefense?.length > 0) && (() => {
+        const deltaColor = (v) => v > 0 ? "#22c55e" : v < 0 ? "#ef4444" : "var(--text-muted)";
+        const deltaStr = (v) => (v > 0 ? "+" : "") + v;
+
+        const renderMatchupSection = (title, icon, iconColor, data, bestLabel, worstLabel) => {
+          const maxAbs = Math.max(...data.map((d) => Math.abs(d.oRtgDelta || 0)), 3);
+          return (
+            <div>
+              {/* Diverging bar chart — ORtg delta from season avg */}
+              <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: "20px 24px", marginBottom: 12 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: 6 }}>
+                  {icon}
+                  {title}
+                </h3>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>ORtg vs season average</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {data.map((d) => {
+                    const delta = d.oRtgDelta || 0;
+                    const pct = Math.min(Math.abs(delta) / maxAbs * 50, 50);
+                    const isPos = delta >= 0;
+                    const isBest = d.label === bestLabel;
+                    const isWorst = d.label === worstLabel;
+                    return (
+                      <div key={d.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ width: 120, fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textAlign: "right", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                          {d.label}
+                          {isBest && <span style={{ fontSize: 8, background: "rgba(34,197,94,0.15)", color: "#22c55e", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>BEST</span>}
+                          {isWorst && <span style={{ fontSize: 8, background: "rgba(239,68,68,0.15)", color: "#ef4444", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>WORST</span>}
+                        </span>
+                        <div style={{ flex: 1, height: 22, position: "relative", background: "var(--bg-tertiary)", borderRadius: 4, overflow: "hidden" }}>
+                          <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "var(--text-muted)", opacity: 0.3 }} />
+                          <div style={{
+                            position: "absolute", top: 2, bottom: 2, borderRadius: 3,
+                            background: isPos ? "rgba(34,197,94,0.75)" : "rgba(239,68,68,0.75)",
+                            ...(isPos ? { left: "50%", width: `${pct}%` } : { right: "50%", width: `${pct}%` }),
+                          }} />
+                        </div>
+                        <span className="stat-number" style={{ width: 50, fontSize: 13, fontWeight: 700, color: isPos ? "#22c55e" : "#ef4444", textAlign: "right" }}>
+                          {deltaStr(delta)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Insight blurb */}
+              {bestLabel && worstLabel && (() => {
+                const best = data.find((d) => d.label === bestLabel);
+                const worst = data.find((d) => d.label === worstLabel);
+                return (
+                  <div style={{ background: "var(--bg-tertiary)", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                    Most efficient vs <span style={{ fontWeight: 700, color: "#22c55e" }}>{bestLabel}</span>
+                    {" "}({best?.record}, {best?.oRtg} ORtg), least efficient vs
+                    {" "}<span style={{ fontWeight: 700, color: "#ef4444" }}>{worstLabel}</span>
+                    {" "}({worst?.record}, {worst?.oRtg} ORtg)
+                  </div>
+                );
+              })()}
+              {/* Detail table — per-possession metrics */}
+              <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 40px 65px 55px 55px 55px 50px", padding: "8px 14px", fontSize: 10, fontWeight: 600, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <span>Archetype</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>Record</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>GP</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>ORtg</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>eFG%</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>TOV%</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>3P%</span>
+                  <span className="stat-number" style={{ textAlign: "center" }}>A/TO</span>
+                </div>
+                {data.map((d, i) => {
+                  const isBest = d.label === bestLabel;
+                  const isWorst = d.label === worstLabel;
+                  return (
+                    <div key={d.label} style={{
+                      display: "grid", gridTemplateColumns: "1fr 60px 40px 65px 55px 55px 55px 50px",
+                      padding: "10px 14px", fontSize: 13,
+                      borderBottom: i < data.length - 1 ? "1px solid var(--border-color)" : "none",
+                      background: isBest ? "rgba(34,197,94,0.06)" : isWorst ? "rgba(239,68,68,0.06)" : "transparent",
+                    }}>
+                      <span style={{ fontWeight: 600 }}>{d.label}</span>
+                      <span className="stat-number" style={{ textAlign: "center", fontWeight: 600 }}>{d.record}</span>
+                      <span className="stat-number" style={{ textAlign: "center" }}>{d.games}</span>
+                      <span className="stat-number" style={{ textAlign: "center" }}>
+                        {d.oRtg}
+                        {d.oRtgDelta !== 0 && <span style={{ fontSize: 9, marginLeft: 2, color: deltaColor(d.oRtgDelta) }}>{deltaStr(d.oRtgDelta)}</span>}
+                      </span>
+                      <span className="stat-number" style={{ textAlign: "center" }}>
+                        {d.efgPct}%
+                        {d.efgDelta !== 0 && <span style={{ fontSize: 9, marginLeft: 2, color: deltaColor(d.efgDelta) }}>{deltaStr(d.efgDelta)}</span>}
+                      </span>
+                      <span className="stat-number" style={{ textAlign: "center" }}>
+                        {d.tovPct}%
+                        {d.tovDelta !== 0 && <span style={{ fontSize: 9, marginLeft: 2, color: deltaColor(-d.tovDelta) }}>{deltaStr(d.tovDelta)}</span>}
+                      </span>
+                      <span className="stat-number" style={{ textAlign: "center" }}>{d.tpPct}%</span>
+                      <span className="stat-number" style={{ textAlign: "center" }}>{d.astTov}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ marginBottom: 28 }}>
+            <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+              <Shield size={18} style={{ color: "var(--accent-blue)" }} />
+              Performance vs Opponent Archetypes
+            </h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              {archetypeMatchups.vsOffense?.length > 0 && renderMatchupSection(
+                "vs Opponent Offense",
+                <Target size={13} style={{ color: "var(--accent)" }} />,
+                "var(--accent)",
+                archetypeMatchups.vsOffense,
+                archetypeMatchups.bestVsOffense,
+                archetypeMatchups.worstVsOffense,
+              )}
+              {archetypeMatchups.vsDefense?.length > 0 && renderMatchupSection(
+                "vs Opponent Defense",
+                <Shield size={13} style={{ color: "var(--accent-blue)" }} />,
+                "var(--accent-blue)",
+                archetypeMatchups.vsDefense,
+                archetypeMatchups.bestVsDefense,
+                archetypeMatchups.worstVsDefense,
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ===== ROSTER TABLE ===== */}
       {roster.length > 0 && (() => {
@@ -7427,6 +7832,7 @@ function CourtsideAppInner() {
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [selectedLivePlayer, setSelectedLivePlayer] = useState(null);
   const [selectedTeamAbbr, setSelectedTeamAbbr] = useState(null);
+  useEffect(() => { window.scrollTo(0, 0); }, [currentPage, selectedPlayerId, selectedTeamAbbr, selectedGameId]);
 
   const handleGameClick = (gameId, gameData = null) => {
     setSelectedGameId(gameId);

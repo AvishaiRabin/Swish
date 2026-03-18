@@ -1,9 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import CourtsideApp from "../Courtside.jsx";
+import App from "./App.jsx";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <CourtsideApp />
+    <App />
   </React.StrictMode>
 );

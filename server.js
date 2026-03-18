@@ -196,6 +196,20 @@ db.exec(`
     updated_at        INTEGER
   );
 
+  DROP TABLE IF EXISTS team_archetypes;
+  CREATE TABLE IF NOT EXISTS team_archetypes (
+    team              TEXT PRIMARY KEY,
+    off_pace_space    REAL, off_paint_beast REAL, off_motion REAL,
+    off_iso_heavy     REAL, off_transition REAL, off_pick_roll REAL,
+    off_archetype     TEXT,
+    def_perimeter_lock REAL, def_rim_protection REAL, def_switchable REAL,
+    def_blitz_press   REAL, def_pack_paint REAL, def_help_zone REAL,
+    def_archetype     TEXT,
+    pace REAL, fg3a_rate REAL, paint_touch_rate REAL, ast_rate REAL,
+    drive_rate REAL, stl_rate REAL, blk_rate REAL, deflection_rate REAL,
+    updated_at        INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS prediction_results (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     prediction_date TEXT NOT NULL,
@@ -688,6 +702,219 @@ function classifyLineupArchetype(archetypes) {
   return "BALANCED";
 }
 
+// ---------------------------------------------------------------------------
+// Team archetype fingerprints & style classification
+// ---------------------------------------------------------------------------
+const ARCH_COLS = [
+  "arch_floor_general", "arch_scoring_pg", "arch_combo_guard", "arch_large_playmaker",
+  "arch_three_and_d_wing", "arch_two_way_wing", "arch_shot_creating_wing", "arch_point_wing",
+  "arch_stretch_big", "arch_unicorn_big", "arch_rim_running_big", "arch_defensive_anchor", "arch_versatile_pf",
+];
+const ARCH_KEYS = [
+  "floorGeneral", "scoringPg", "comboGuard", "largePlaymaker",
+  "threeAndDWing", "twoWayWing", "shotCreatingWing", "pointWing",
+  "stretchBig", "unicornBig", "rimRunningBig", "defensiveAnchor", "versatilePf",
+];
+
+function computeTeamFingerprints() {
+  const selectCols = ARCH_COLS.map(
+    (c) => `SUM(${c} * COALESCE(usg_pct, 20)) / SUM(COALESCE(usg_pct, 20)) AS wt_${c}`
+  ).join(", ");
+  const rows = db.prepare(
+    `SELECT team, ${selectCols} FROM player_profiles WHERE team IS NOT NULL GROUP BY team`
+  ).all();
+  const result = {};
+  for (const r of rows) {
+    const fp = {};
+    for (let i = 0; i < ARCH_COLS.length; i++) {
+      fp[ARCH_KEYS[i]] = r[`wt_${ARCH_COLS[i]}`] ?? 0;
+    }
+    result[r.team] = fp;
+  }
+  return result;
+}
+
+function classifyTeamStyle(fp) {
+  const scores = [
+    ["Guard-Heavy",       (fp.floorGeneral || 0) + (fp.scoringPg || 0) + (fp.comboGuard || 0)],
+    ["Wing-Dominant",     (fp.threeAndDWing || 0) + (fp.twoWayWing || 0) + (fp.shotCreatingWing || 0) + (fp.pointWing || 0)],
+    ["Big-Heavy",         (fp.rimRunningBig || 0) + (fp.unicornBig || 0) + (fp.stretchBig || 0) + (fp.defensiveAnchor || 0)],
+    ["Playmaker-Driven",  (fp.floorGeneral || 0) + (fp.scoringPg || 0) + (fp.largePlaymaker || 0) + (fp.pointWing || 0)],
+    ["Defensive-Focused", (fp.twoWayWing || 0) + (fp.defensiveAnchor || 0) + (fp.threeAndDWing || 0)],
+  ];
+  scores.sort((a, b) => b[1] - a[1]);
+  if (scores[0][1] > scores[1][1] * 1.3) return scores[0][0];
+  return "Balanced";
+}
+
+// ---------------------------------------------------------------------------
+// Team offensive & defensive archetype classification
+// ---------------------------------------------------------------------------
+function _scale(x, lo, hi) { return Math.max(0, Math.min(1, (x - lo) / (hi - lo))); }
+function _inv(x, lo, hi) { return 1 - _scale(x, lo, hi); }
+
+function scoreOffenseArchetypes(s) {
+  // Thresholds calibrated to per-player-average data ranges
+  const paceSpace   = _scale(s.pace, 99, 106) * 0.3 + _scale(s.fg3aRate, 0.36, 0.50) * 0.4 + _inv(s.paintTouchRate, 1.4, 2.3) * 0.3;
+  const paintBeast  = _scale(s.paintTouchRate, 1.7, 2.5) * 0.35 + _scale(s.ftaRate, 0.24, 0.36) * 0.3 + _inv(s.fg3aRate, 0.30, 0.44) * 0.35;
+  const motion      = _scale(s.astRate, 0.58, 0.80) * 0.4 + _scale(s.passRate, 2.5, 5.0) * 0.3 + _scale(s.potentialAst, 1.0, 3.0) * 0.3;
+  const isoHeavy    = _scale(s.driveRate, 3.5, 5.5) * 0.4 + _inv(s.astRate, 0.50, 0.70) * 0.3 + _scale(s.usgTop3, 0.55, 0.80) * 0.3;
+  const transition  = _scale(s.pace, 100, 107) * 0.35 + _scale(s.stlPerGame, 3.0, 6.0) * 0.35 + _scale(s.fg3aRate, 0.36, 0.46) * 0.3;
+  // Pick & Roll — high paint touches + moderate assists + interior scoring
+  const pickRoll    = _scale(s.paintTouchRate, 1.6, 2.4) * 0.3 + _scale(s.astRate, 0.55, 0.72) * 0.25 + _scale(s.ftaRate, 0.24, 0.34) * 0.25 + _inv(s.fg3aRate, 0.32, 0.44) * 0.2;
+  return { paceSpace, paintBeast, motion, isoHeavy, transition, pickRoll };
+}
+
+function scoreDefenseArchetypes(s) {
+  // Thresholds calibrated to per-player-average data ranges
+  const perimeterLock = _scale(s.deflectionRate, 1.3, 1.9) * 0.4 + _scale(s.contestedRate, 3.0, 6.0) * 0.3 + _scale(s.stlPerGame, 3.0, 6.0) * 0.3;
+  const rimProtection = _scale(s.blkPerGame, 1.5, 4.5) * 0.45 + _scale(s.contestedRate, 3.5, 6.0) * 0.3 + _scale(s.drebPct, 0.50, 0.56) * 0.25;
+  const blitzPress    = _scale(s.stlPerGame, 3.5, 6.5) * 0.4 + _scale(s.deflectionRate, 1.3, 1.9) * 0.35 + _scale(s.pace, 100, 107) * 0.25;
+  const packPaint     = _scale(s.blkPerGame, 1.5, 4.0) * 0.3 + _scale(s.drebPct, 0.51, 0.57) * 0.4 + _inv(s.stlPerGame, 2.0, 5.0) * 0.3;
+  // Switchable = moderate across all categories, low variance
+  const defScores = [perimeterLock, rimProtection, blitzPress, packPaint];
+  const avg = defScores.reduce((a, b) => a + b, 0) / 4;
+  const variance = defScores.reduce((a, v) => a + (v - avg) ** 2, 0) / 4;
+  const switchable = _inv(variance, 0, 0.04) * 0.6 + _scale(avg, 0.2, 0.5) * 0.4;
+  // Help/Zone — team rotation defense, high contested shots + high DReb% + moderate blocks
+  const helpZone = _scale(s.contestedRate, 3.5, 6.0) * 0.35 + _scale(s.drebPct, 0.51, 0.57) * 0.3 + _scale(s.blkPerGame, 1.0, 3.5) * 0.2 + _inv(s.stlPerGame, 2.5, 5.5) * 0.15;
+  return { perimeterLock, rimProtection, switchable, blitzPress, packPaint, helpZone };
+}
+
+function normalizeScores(raw) {
+  const entries = Object.entries(raw);
+  const total = entries.reduce((s, [, v]) => s + v, 0) || 1;
+  const norm = {};
+  for (const [k, v] of entries) norm[k] = v / total;
+  return norm;
+}
+
+function refreshTeamArchetypes() {
+  // Get all teams from player_profiles
+  const teams = db.prepare("SELECT DISTINCT COALESCE(team, '') AS team FROM player_profiles WHERE team IS NOT NULL AND team != ''").all().map((r) => r.team);
+  if (teams.length === 0) { console.log("[TeamArchetypes] No teams in player_profiles, skipping"); return; }
+
+  // Aggregate game log stats per team per game, with recency weighting
+  const now = Date.now();
+  const gameLogStmt = db.prepare(`
+    SELECT g.game_date,
+           SUM(g.pts) AS pts, SUM(g.reb) AS reb, SUM(g.ast) AS ast,
+           SUM(g.stl) AS stl, SUM(g.blk) AS blk, SUM(g.tov) AS tov,
+           SUM(g.fgm) AS fgm, SUM(g.fga) AS fga,
+           SUM(g.fg3m) AS fg3m, SUM(g.fg3a) AS fg3a,
+           SUM(g.ftm) AS ftm, SUM(g.fta) AS fta,
+           COUNT(DISTINCT g.player_id) AS n_players
+    FROM player_game_logs g
+    LEFT JOIN players p ON g.player_id = p.player_id
+    WHERE COALESCE(g.team, p.team) = ?
+    GROUP BY g.game_date
+    ORDER BY g.game_date DESC
+  `);
+
+  // Player profile stats per team (possession-level data)
+  const profileStmt = db.prepare(`
+    SELECT AVG(pace) AS avg_pace,
+           AVG(drives) AS avg_drives, AVG(paint_touches) AS avg_paint_touches,
+           AVG(passes_made) AS avg_passes, AVG(potential_ast) AS avg_potential_ast,
+           AVG(deflections) AS avg_deflections, AVG(contested_shots) AS avg_contested,
+           AVG(ast_pct) AS avg_ast_pct, AVG(usg_pct) AS avg_usg_pct,
+           AVG(dreb_pct) AS avg_dreb_pct,
+           MAX(usg_pct) AS max_usg,
+           -- Top 3 USG% concentration
+           (SELECT SUM(sub.usg_pct) FROM (
+             SELECT usg_pct FROM player_profiles WHERE team = pp.team AND usg_pct IS NOT NULL ORDER BY usg_pct DESC LIMIT 3
+           ) sub) AS top3_usg_sum,
+           (SELECT SUM(sub.usg_pct) FROM (
+             SELECT usg_pct FROM player_profiles WHERE team = pp.team AND usg_pct IS NOT NULL
+           ) sub) AS total_usg_sum
+    FROM player_profiles pp
+    WHERE pp.team = ? AND pp.usg_pct IS NOT NULL
+  `);
+
+  const ins = db.prepare(`
+    INSERT OR REPLACE INTO team_archetypes VALUES (
+      ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+    )
+  `);
+
+  let count = 0;
+  db.transaction(() => {
+    for (const team of teams) {
+      const games = gameLogStmt.all(team);
+      const profile = profileStmt.get(team);
+      if (games.length < 5) continue; // Need minimum games
+
+      // Weighted averages with exponential decay (0.97^days_ago)
+      let wSum = 0;
+      let wFg3a = 0, wFga = 0, wFta = 0, wAst = 0, wFgm = 0;
+      let wStl = 0, wBlk = 0, wReb = 0, wGameCount = 0;
+      for (const g of games) {
+        const daysAgo = Math.max(0, (now - new Date(g.game_date).getTime()) / (1000 * 60 * 60 * 24));
+        const w = Math.pow(0.97, daysAgo);
+        wSum += w;
+        wFg3a += (g.fg3a || 0) * w;
+        wFga += (g.fga || 0) * w;
+        wFta += (g.fta || 0) * w;
+        wAst += (g.ast || 0) * w;
+        wFgm += (g.fgm || 0) * w;
+        wStl += (g.stl || 0) * w;
+        wBlk += (g.blk || 0) * w;
+        wReb += (g.reb || 0) * w;
+        wGameCount += w;
+      }
+
+      const fg3aRate = wFga > 0 ? wFg3a / wFga : 0.36;
+      const ftaRate = wFga > 0 ? wFta / wFga : 0.28;
+      const astRate = wFgm > 0 ? wAst / wFgm : 0.60;
+      const stlPerGame = wGameCount > 0 ? wStl / wGameCount : 7;
+      const blkPerGame = wGameCount > 0 ? wBlk / wGameCount : 4.5;
+      const rebPerGame = wGameCount > 0 ? wReb / wGameCount : 43;
+
+      const pace = profile?.avg_pace || 100;
+      const paintTouchRate = profile?.avg_paint_touches || 30;
+      const driveRate = profile?.avg_drives || 45;
+      const passRate = profile?.avg_passes || 270;
+      const potentialAst = profile?.avg_potential_ast || 10;
+      const deflectionRate = profile?.avg_deflections || 14;
+      const contestedRate = profile?.avg_contested || 48;
+      const drebPct = profile?.avg_dreb_pct || 0.52;
+      const usgTop3 = (profile?.top3_usg_sum && profile?.total_usg_sum)
+        ? profile.top3_usg_sum / profile.total_usg_sum : 0.6;
+
+      const stats = {
+        pace, fg3aRate, ftaRate, astRate, paintTouchRate, driveRate,
+        passRate, potentialAst, stlPerGame, blkPerGame, rebPerGame,
+        deflectionRate, contestedRate, drebPct, usgTop3,
+      };
+
+      // Score and normalize
+      const off = normalizeScores(scoreOffenseArchetypes(stats));
+      const offLabel = Object.entries(off).sort((a, b) => b[1] - a[1])[0][0];
+
+      const def = normalizeScores(scoreDefenseArchetypes(stats));
+      const defLabel = Object.entries(def).sort((a, b) => b[1] - a[1])[0][0];
+
+      const OFF_LABELS = { paceSpace: "Pace & Space", paintBeast: "Paint Beast", motion: "Motion Offense", isoHeavy: "ISO Heavy", transition: "Transition", pickRoll: "Pick & Roll" };
+      const DEF_LABELS = { perimeterLock: "Perimeter Lock", rimProtection: "Rim Protection", switchable: "Switchable", blitzPress: "Blitz/Press", packPaint: "Pack the Paint", helpZone: "Help/Zone" };
+
+      ins.run(
+        team,
+        off.paceSpace || 0, off.paintBeast || 0, off.motion || 0,
+        off.isoHeavy || 0, off.transition || 0, off.pickRoll || 0,
+        OFF_LABELS[offLabel] || offLabel,
+        def.perimeterLock || 0, def.rimProtection || 0, def.switchable || 0,
+        def.blitzPress || 0, def.packPaint || 0, def.helpZone || 0,
+        DEF_LABELS[defLabel] || defLabel,
+        pace, fg3aRate, paintTouchRate, astRate,
+        driveRate, stlPerGame, blkPerGame, deflectionRate,
+        Date.now()
+      );
+      count++;
+    }
+  })();
+  console.log(`[TeamArchetypes] Classified ${count} teams`);
+}
+
 async function refreshLineupProfiles() {
   const lineups5 = db.prepare(
     "SELECT * FROM lineups WHERE group_size = 5 AND min >= 5"
@@ -759,6 +986,8 @@ async function refreshAll(force = false) {
   if (force || isStale("game_logs_current", 24 * 60 * 60 * 1000)) {
     await updateCurrentSeasonLogs().catch((e) => console.error("[GameLogs] Update error:", e.message));
   }
+  // Team offensive/defensive archetype classification — depends on game logs + player profiles
+  try { refreshTeamArchetypes(); } catch (e) { console.error("[TeamArchetypes] Error:", e.message); }
 }
 
 // ---------------------------------------------------------------------------
@@ -910,9 +1139,13 @@ async function gatherPredictionContext() {
     GameDate: dateStr,
   });
   const games = scoreboardData.scoreboard?.games || [];
-  const upcomingGames = games.filter((g) => g.gameStatus === 1);
-  console.log(`[Predictions] ${dateStr}: ${games.length} total games, ${upcomingGames.length} upcoming (status=1)`);
-  if (upcomingGames.length === 0) return { games: [], dateStr, context: "" };
+  // Include upcoming (1) and live (2) games — skip only if all are already final
+  // This prevents stale predictions when the cron fires mid-day or late
+  const upcomingGames = games.filter((g) => g.gameStatus === 1 || g.gameStatus === 2);
+  const allGames = games.length > 0 ? games : [];
+  const gamesToPredict = upcomingGames.length > 0 ? upcomingGames : allGames;
+  console.log(`[Predictions] ${dateStr}: ${games.length} total games, ${upcomingGames.length} not-yet-final`);
+  if (gamesToPredict.length === 0) return { games: [], dateStr, context: "" };
 
   // Pull from local DB
   const standings = db.prepare("SELECT * FROM standings ORDER BY pct DESC").all();
@@ -920,7 +1153,7 @@ async function gatherPredictionContext() {
 
   // Collect team abbreviations for today's games
   const teamAbbrs = new Set();
-  for (const g of upcomingGames) {
+  for (const g of gamesToPredict) {
     const home = TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode;
     const away = TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode;
     if (home) teamAbbrs.add(home);
@@ -958,7 +1191,7 @@ async function gatherPredictionContext() {
     .map((s) => `${s.team}: ${s.wins}-${s.losses} DIFF:${s.diff} L10:${s.last10} Streak:${s.streak}`)
     .join("\n");
 
-  const gamesText = upcomingGames.map((g) => {
+  const gamesText = gamesToPredict.map((g) => {
     const home = TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode;
     const away = TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode;
     const homeLog = (gameLogs[home] || []).map((l) => `${l.matchup} ${l.wl} ${l.pts}pts`).join(", ");
@@ -1264,7 +1497,17 @@ async function runXGBoostPredictions() {
   });
 }
 
-async function runPredictionJobs() {
+async function runPredictionJobs(force = false) {
+  // Skip if predictions already ran within the last 12 hours (avoid re-running on every restart)
+  if (!force) {
+    const last = db.prepare("SELECT updated_at FROM meta WHERE key = 'predictions'").get();
+    if (last && Date.now() - last.updated_at < 12 * 60 * 60 * 1000) {
+      console.log("[PredictionJobs] Skipping — last run was", Math.round((Date.now() - last.updated_at) / 3600000), "hours ago");
+      // Still grade past predictions even if we skip generating new ones
+      try { await gradePredictions(); } catch (e) { console.error("[Grading] Error:", e.message); }
+      return;
+    }
+  }
   console.log("[PredictionJobs] Starting...");
   // XGBoost runs first so its output can be included in Claude's context
   try { await runXGBoostPredictions(); } catch (e) { console.error("[XGBoost] Error:", e.message); }
@@ -1442,6 +1685,300 @@ app.get("/api/db/lineup-profiles/matchups", (_req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Archetype matchup analysis endpoints
+// ---------------------------------------------------------------------------
+app.get("/api/db/team-archetypes", (req, res) => {
+  try {
+    const team = req.query.team;
+    const rows = team
+      ? db.prepare("SELECT * FROM team_archetypes WHERE team = ?").all(team)
+      : db.prepare("SELECT * FROM team_archetypes ORDER BY team").all();
+    res.json(rows);
+  } catch (e) {
+    console.error("[TeamArchetypes] endpoint error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/db/archetype-matchups/fingerprints", (_req, res) => {
+  try {
+    const fps = computeTeamFingerprints();
+    const teams = Object.entries(fps).map(([team, fp]) => {
+      const style = classifyTeamStyle(fp);
+      const sorted = ARCH_KEYS.map((k, i) => [k, fp[k] || 0]).sort((a, b) => b[1] - a[1]);
+      return {
+        team,
+        style,
+        fingerprint: fp,
+        topArchetypes: sorted.slice(0, 3).map(([k]) => k),
+      };
+    });
+    res.json({ teams });
+  } catch (e) {
+    console.error("[ArchetypeMatchups] fingerprints error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/db/archetype-matchups/team", (req, res) => {
+  const team = req.query.team;
+  if (!team) return res.status(400).json({ error: "team param required" });
+
+  try {
+    // Get opponent archetypes from team_archetypes table
+    const oppArchetypes = {};
+    const archRows = db.prepare("SELECT team, off_archetype, def_archetype FROM team_archetypes").all();
+    for (const r of archRows) {
+      if (r.team !== team) oppArchetypes[r.team] = { off: r.off_archetype, def: r.def_archetype };
+    }
+
+    // Pull game logs for this team's players, grouped by game
+    const logs = db.prepare(`
+      SELECT g.player_id, g.game_date, g.opponent, g.home,
+             g.pts, g.reb, g.ast, g.stl, g.blk, g.plus_minus,
+             g.fgm, g.fga, g.fg3m, g.fg3a, g.ftm, g.fta, g.tov,
+             COALESCE(g.team, p.team) AS player_team
+      FROM player_game_logs g
+      LEFT JOIN players p ON g.player_id = p.player_id
+      WHERE COALESCE(g.team, p.team) = ?
+      ORDER BY g.game_date DESC
+    `).all(team);
+
+    // Aggregate by game_date (team totals per game)
+    const gameMap = new Map();
+    for (const row of logs) {
+      const opp = row.opponent;
+      if (!opp || !oppArchetypes[opp]) continue;
+      const key = row.game_date;
+      if (!gameMap.has(key)) {
+        gameMap.set(key, {
+          date: key, opponent: opp,
+          oppOffense: oppArchetypes[opp].off,
+          oppDefense: oppArchetypes[opp].def,
+          pts: 0, fgm: 0, fga: 0, fg3m: 0, fg3a: 0,
+          ftm: 0, fta: 0, ast: 0, tov: 0,
+          plusMinus: 0, playerCount: 0,
+        });
+      }
+      const g = gameMap.get(key);
+      g.pts += row.pts || 0;
+      g.fgm += row.fgm || 0;
+      g.fga += row.fga || 0;
+      g.fg3m += row.fg3m || 0;
+      g.fg3a += row.fg3a || 0;
+      g.ftm += row.ftm || 0;
+      g.fta += row.fta || 0;
+      g.ast += row.ast || 0;
+      g.tov += row.tov || 0;
+      g.plusMinus += row.plus_minus || 0;
+      g.playerCount++;
+    }
+
+    // Normalize plus_minus (sum of individual +/- / player count)
+    const games = [...gameMap.values()];
+    for (const g of games) {
+      g.plusMinus = g.playerCount > 0 ? g.plusMinus / g.playerCount : 0;
+    }
+
+    // Season baseline for deltas
+    const seasonTotals = { fga: 0, fta: 0, tov: 0, pts: 0, fgm: 0, fg3m: 0, fg3a: 0, ast: 0 };
+    for (const g of games) {
+      seasonTotals.fga += g.fga; seasonTotals.fta += g.fta; seasonTotals.tov += g.tov;
+      seasonTotals.pts += g.pts; seasonTotals.fgm += g.fgm;
+      seasonTotals.fg3m += g.fg3m; seasonTotals.fg3a += g.fg3a; seasonTotals.ast += g.ast;
+    }
+    const seasonPoss = seasonTotals.fga + 0.44 * seasonTotals.fta + seasonTotals.tov;
+    const seasonORtg = seasonPoss > 0 ? (seasonTotals.pts / seasonPoss * 100) : 0;
+    const seasonEfg = seasonTotals.fga > 0
+      ? ((seasonTotals.fgm + 0.5 * seasonTotals.fg3m) / seasonTotals.fga * 100) : 0;
+    const seasonTovPct = seasonPoss > 0 ? (seasonTotals.tov / seasonPoss * 100) : 0;
+
+    // Helper to bucket games and compute per-possession stats
+    function bucketStats(games, keyFn) {
+      const buckets = {};
+      for (const g of games) {
+        const k = keyFn(g);
+        if (!k) continue;
+        if (!buckets[k]) buckets[k] = [];
+        buckets[k].push(g);
+      }
+      return Object.entries(buckets).map(([label, gs]) => {
+        const n = gs.length;
+        const totalPts = gs.reduce((s, g) => s + g.pts, 0);
+        const totalFga = gs.reduce((s, g) => s + g.fga, 0);
+        const totalFgm = gs.reduce((s, g) => s + g.fgm, 0);
+        const totalFg3a = gs.reduce((s, g) => s + g.fg3a, 0);
+        const totalFg3m = gs.reduce((s, g) => s + g.fg3m, 0);
+        const totalFta = gs.reduce((s, g) => s + g.fta, 0);
+        const totalTov = gs.reduce((s, g) => s + g.tov, 0);
+        const totalAst = gs.reduce((s, g) => s + g.ast, 0);
+        const avgPm = gs.reduce((s, g) => s + g.plusMinus, 0) / n;
+        const wins = gs.filter((g) => g.plusMinus > 0).length;
+
+        // Per-possession metrics
+        const poss = totalFga + 0.44 * totalFta + totalTov;
+        const oRtg = poss > 0 ? (totalPts / poss * 100) : 0;
+        const efgPct = totalFga > 0 ? ((totalFgm + 0.5 * totalFg3m) / totalFga * 100) : 0;
+        const tovPct = poss > 0 ? (totalTov / poss * 100) : 0;
+        const tpPct = totalFg3a > 0 ? (totalFg3m / totalFg3a * 100) : 0;
+        const astTov = totalTov > 0 ? (totalAst / totalTov) : 0;
+
+        return {
+          label, games: n, record: `${wins}-${n - wins}`,
+          oRtg: +oRtg.toFixed(1),
+          efgPct: +efgPct.toFixed(1),
+          tovPct: +tovPct.toFixed(1),
+          tpPct: +tpPct.toFixed(1),
+          astTov: +astTov.toFixed(2),
+          avgPlusMinus: +avgPm.toFixed(1),
+          // Deltas vs season
+          oRtgDelta: +(oRtg - seasonORtg).toFixed(1),
+          efgDelta: +(efgPct - seasonEfg).toFixed(1),
+          tovDelta: +(tovPct - seasonTovPct).toFixed(1),
+        };
+      }).filter((s) => s.games >= 2).sort((a, b) => b.oRtg - a.oRtg);
+    }
+
+    // Group by opponent's offensive archetype (how we defend against their offense)
+    const vsOffense = bucketStats(games, (g) => g.oppOffense);
+    // Group by opponent's defensive archetype (how we score against their defense)
+    const vsDefense = bucketStats(games, (g) => g.oppDefense);
+
+    res.json({
+      team,
+      vsOffense,
+      bestVsOffense: vsOffense[0]?.label || null,
+      worstVsOffense: vsOffense[vsOffense.length - 1]?.label || null,
+      vsDefense,
+      bestVsDefense: vsDefense[0]?.label || null,
+      worstVsDefense: vsDefense[vsDefense.length - 1]?.label || null,
+    });
+  } catch (e) {
+    console.error("[ArchetypeMatchups] team error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/db/archetype-matchups/player", (req, res) => {
+  const playerId = parseInt(req.query.playerId);
+  if (!playerId) return res.status(400).json({ error: "playerId param required" });
+
+  try {
+    // Use team_archetypes for opponent classification (offense + defense)
+    const oppArchetypes = {};
+    const archRows = db.prepare("SELECT team, off_archetype, def_archetype FROM team_archetypes").all();
+    for (const r of archRows) oppArchetypes[r.team] = { off: r.off_archetype, def: r.def_archetype };
+
+    const profile = db.prepare("SELECT name, team, archetype_label FROM player_profiles WHERE player_id = ?").get(playerId);
+
+    const logs = db.prepare(`
+      SELECT game_date, opponent, pts, reb, ast, stl, blk, plus_minus,
+             fgm, fga, fg3m, fg3a, ftm, fta, tov, min_played
+      FROM player_game_logs WHERE player_id = ? ORDER BY game_date DESC
+    `).all(playerId);
+
+    // Compute season-wide baseline for comparison
+    const seasonTotals = { fga: 0, fta: 0, tov: 0, pts: 0, fgm: 0, fg3m: 0, fg3a: 0, ast: 0, min: 0, games: 0 };
+    for (const row of logs) {
+      seasonTotals.fga += row.fga || 0;
+      seasonTotals.fta += row.fta || 0;
+      seasonTotals.tov += row.tov || 0;
+      seasonTotals.pts += row.pts || 0;
+      seasonTotals.fgm += row.fgm || 0;
+      seasonTotals.fg3m += row.fg3m || 0;
+      seasonTotals.fg3a += row.fg3a || 0;
+      seasonTotals.ast += row.ast || 0;
+      seasonTotals.min += row.min_played || 0;
+      seasonTotals.games++;
+    }
+    const seasonPoss = seasonTotals.fga + 0.44 * seasonTotals.fta + seasonTotals.tov;
+    const seasonTsPct = (seasonTotals.fga + 0.44 * seasonTotals.fta) > 0
+      ? (seasonTotals.pts / (2 * (seasonTotals.fga + 0.44 * seasonTotals.fta)) * 100) : 0;
+    const seasonPtsPer100 = seasonPoss > 0 ? (seasonTotals.pts / seasonPoss * 100) : 0;
+    const seasonUsage = seasonTotals.min > 0
+      ? ((seasonTotals.fga + 0.44 * seasonTotals.fta + seasonTotals.tov) / seasonTotals.min * 36) : 0;
+    const seasonAstTov = seasonTotals.tov > 0 ? (seasonTotals.ast / seasonTotals.tov) : 0;
+
+    // Helper to bucket games and compute per-possession efficiency stats
+    function playerBucketStats(logs, keyFn) {
+      const buckets = {};
+      for (const row of logs) {
+        const opp = row.opponent;
+        if (!opp || !oppArchetypes[opp]) continue;
+        const key = keyFn(opp);
+        if (!key) continue;
+        if (!buckets[key]) buckets[key] = [];
+        buckets[key].push(row);
+      }
+      return Object.entries(buckets).map(([label, gs]) => {
+        const n = gs.length;
+        const totalFga = gs.reduce((s, g) => s + (g.fga || 0), 0);
+        const totalFgm = gs.reduce((s, g) => s + (g.fgm || 0), 0);
+        const totalFta = gs.reduce((s, g) => s + (g.fta || 0), 0);
+        const totalFtm = gs.reduce((s, g) => s + (g.ftm || 0), 0);
+        const totalFg3a = gs.reduce((s, g) => s + (g.fg3a || 0), 0);
+        const totalFg3m = gs.reduce((s, g) => s + (g.fg3m || 0), 0);
+        const totalPts = gs.reduce((s, g) => s + (g.pts || 0), 0);
+        const totalAst = gs.reduce((s, g) => s + (g.ast || 0), 0);
+        const totalTov = gs.reduce((s, g) => s + (g.tov || 0), 0);
+        const totalMin = gs.reduce((s, g) => s + (g.min_played || 0), 0);
+        // Estimated possessions: FGA + 0.44*FTA + TOV
+        const poss = totalFga + 0.44 * totalFta + totalTov;
+        const ptsPer100 = poss > 0 ? (totalPts / poss * 100) : 0;
+        const tsPct = (totalFga + 0.44 * totalFta) > 0
+          ? (totalPts / (2 * (totalFga + 0.44 * totalFta)) * 100) : 0;
+        // Usage per 36 min
+        const usage = totalMin > 0 ? (poss / totalMin * 36) : 0;
+        const astTov = totalTov > 0 ? (totalAst / totalTov) : 0;
+        const fg3Pct = totalFg3a > 0 ? (totalFg3m / totalFg3a * 100) : 0;
+        const avgPm = gs.reduce((s, g) => s + (g.plus_minus || 0), 0) / n;
+
+        return {
+          label, games: n,
+          ptsPer100: +ptsPer100.toFixed(1),
+          tsPct: +tsPct.toFixed(1),
+          usage: +usage.toFixed(1),
+          astTov: +astTov.toFixed(2),
+          fg3Pct: +fg3Pct.toFixed(1),
+          avgPlusMinus: +avgPm.toFixed(1),
+          // Deltas vs season average
+          ptsPer100Delta: +(ptsPer100 - seasonPtsPer100).toFixed(1),
+          tsPctDelta: +(tsPct - seasonTsPct).toFixed(1),
+          usageDelta: +(usage - seasonUsage).toFixed(1),
+        };
+      }).filter((s) => s.games >= 2).sort((a, b) => b.ptsPer100 - a.ptsPer100);
+    }
+
+    // How this player performs against different opponent defensive styles
+    const vsDefense = playerBucketStats(logs, (opp) => oppArchetypes[opp]?.def);
+    // How this player performs against different opponent offensive styles
+    const vsOffense = playerBucketStats(logs, (opp) => oppArchetypes[opp]?.off);
+
+    res.json({
+      playerId,
+      playerName: profile?.name || null,
+      archetypeLabel: profile?.archetype_label || null,
+      seasonBaseline: {
+        ptsPer100: +seasonPtsPer100.toFixed(1),
+        tsPct: +seasonTsPct.toFixed(1),
+        usage: +seasonUsage.toFixed(1),
+        astTov: +seasonAstTov.toFixed(2),
+        games: seasonTotals.games,
+      },
+      vsDefense,
+      bestVsDefense: vsDefense[0]?.label || null,
+      worstVsDefense: vsDefense[vsDefense.length - 1]?.label || null,
+      vsOffense,
+      bestVsOffense: vsOffense[0]?.label || null,
+      worstVsOffense: vsOffense[vsOffense.length - 1]?.label || null,
+    });
+  } catch (e) {
+    console.error("[ArchetypeMatchups] player error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/db/player-profiles", (req, res) => {
   const team = req.query.team;
   const playerId = req.query.playerId ? parseInt(req.query.playerId) : null;
@@ -1586,7 +2123,7 @@ app.post("/api/predictions/generate", async (_req, res) => {
     // Clear today's existing predictions so it reruns even if already saved
     const dateStr = todayDateStr();
     db.prepare("DELETE FROM predictions WHERE prediction_date = ?").run(dateStr);
-    await runPredictionJobs();
+    await runPredictionJobs(true);
     const rows = db.prepare("SELECT COUNT(*) as c FROM predictions WHERE prediction_date = ?").get(dateStr);
     res.json({ success: true, count: rows.c });
   } catch (e) {
