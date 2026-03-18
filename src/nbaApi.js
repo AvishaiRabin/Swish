@@ -275,6 +275,31 @@ export async function fetchPlayerBio(playerId) {
 }
 
 // ============================================================================
+// TEAM OFFENSIVE & DEFENSIVE ARCHETYPES
+// ============================================================================
+export async function fetchTeamArchetypes(teamAbbr) {
+  const url = teamAbbr ? `/api/db/team-archetypes?team=${teamAbbr}` : `/api/db/team-archetypes`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// ============================================================================
+// ARCHETYPE MATCHUP ANALYSIS
+// ============================================================================
+export async function fetchTeamArchetypeMatchups(teamAbbr) {
+  const res = await fetch(`/api/db/archetype-matchups/team?team=${teamAbbr}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchPlayerArchetypeMatchups(playerId) {
+  const res = await fetch(`/api/db/archetype-matchups/player?playerId=${playerId}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// ============================================================================
 // TEAM GAME LOG — last N completed games for a team
 // ============================================================================
 export async function fetchTeamGameLog(teamAbbr, count = 10) {
