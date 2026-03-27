@@ -6,3 +6,21 @@ dist/
 .env
 .claude/
 public/
+
+# ML generated artifacts
+ml/models/*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.tmp
