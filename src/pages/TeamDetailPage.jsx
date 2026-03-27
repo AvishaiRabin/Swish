@@ -8,8 +8,8 @@ import {
   ChevronLeft, ChevronDown, ChevronUp, Home, Activity, Shield,
   Target, BarChart3, Users, Calendar,
 } from "lucide-react";
-import { fetchTeamGameLog, fetchTeamArchetypeMatchups, fetchTeamArchetypes } from "../nbaApi.js";
-import { TEAMS, TEAM_DETAILS } from "../data/teams.js";
+import { fetchTeamGameLog, fetchTeamArchetypeMatchups, fetchTeamArchetypes, fetchTeamRatingHistory, fetchTeamStats, fetchEloRatings } from "../nbaApi.js";
+import { TEAMS } from "../data/teams.js";
 import TeamLogo from "../components/TeamLogo.jsx";
 import PlayerHeadshot from "../components/PlayerHeadshot.jsx";
 import Breadcrumb from "../components/Breadcrumb.jsx";
@@ -18,9 +18,18 @@ import { useLiveData } from "../context/LiveDataContext.jsx";
 export default function TeamDetailPage({ teamAbbr, onBack }) {
   const liveData = useLiveData();
   const team = TEAMS[teamAbbr];
-  const detail = TEAM_DETAILS[teamAbbr];
 
-  // Build roster from live player data, fall back to static detail (must be before early return)
+  // Fetch live team stats from DB
+  const [liveStats, setLiveStats] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTeamStats(teamAbbr).then((data) => {
+      if (!cancelled && data?.[0]) setLiveStats(data[0]);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [teamAbbr]);
+
+  // Build roster from live player data
   const roster = useMemo(() => {
     if (liveData.livePlayers?.length) {
       const teamPlayers = liveData.livePlayers
@@ -28,8 +37,8 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
         .map((p) => ({ ...p, jersey: p.jersey ?? "—" }));
       if (teamPlayers.length > 0) return teamPlayers;
     }
-    return detail?.roster || [];
-  }, [liveData.livePlayers, teamAbbr, detail]);
+    return [];
+  }, [liveData.livePlayers, teamAbbr]);
 
   // Roster sort state (must be before early return — React hooks rules)
   const [rosterSort, setRosterSort] = useState("ppg");
@@ -71,6 +80,29 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
     return () => { cancelled = true; };
   }, [teamAbbr]);
 
+  // Fetch Elo rating for this team
+  const [eloInfo, setEloInfo] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchEloRatings().then((data) => {
+      if (!cancelled && data?.teams?.length) {
+        const mine = data.teams.find((t) => t.team === teamAbbr);
+        if (mine) setEloInfo(mine);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [teamAbbr]);
+
+  // Fetch live rating history from DB (replaces static ratingHistory)
+  const [ratingHistory, setRatingHistory] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTeamRatingHistory(teamAbbr).then((data) => {
+      if (!cancelled && data?.length) setRatingHistory(data);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [teamAbbr]);
+
   if (!team) {
     return (
       <div className="fade-in" style={{ maxWidth: 1400, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
@@ -87,15 +119,15 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
   const conf = team.conference === "East" ? "East" : "West";
   const standing = liveData.standings[conf].find((s) => s.team === teamAbbr);
   const streak = standing?.streak || "—";
-  const confRank = detail?.confRank || (liveData.standings[conf].findIndex((s) => s.team === teamAbbr) + 1);
-  // Prefer live standings home/away records; fall back to static detail
-  const homeRecord = standing?.home || detail?.homeRecord || "—";
-  const awayRecord = standing?.away || detail?.awayRecord || "—";
+  const confRank = liveData.standings[conf].findIndex((s) => s.team === teamAbbr) + 1 || "—";
+  const homeRecord = standing?.home || "—";
+  const awayRecord = standing?.away || "—";
 
   const last10 = liveGameLog || [];
 
   const ChartTooltipContent = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      const net = payload[0]?.payload?.net;
       return (
         <div style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
           <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--text-primary)" }}>{label}</div>
@@ -104,6 +136,11 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
               {p.name}: <span style={{ fontWeight: 600 }}>{p.value}</span>
             </div>
           ))}
+          {net != null && (
+            <div style={{ color: "var(--accent)", marginTop: 4, borderTop: "1px solid var(--border-color)", paddingTop: 4 }}>
+              Net Rtg: <span style={{ fontWeight: 600 }}>{net > 0 ? "+" : ""}{net}</span>
+            </div>
+          )}
         </div>
       );
     }
@@ -135,10 +172,17 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
                 { label: "PCT", value: pct },
                 { label: "Conf Rank", value: `#${confRank}` },
                 { label: "Streak", value: streak, color: streak.startsWith("W") ? "var(--accent-green)" : streak.startsWith("L") ? "var(--accent-red)" : undefined },
+                ...(eloInfo ? [{
+                  label: "Elo",
+                  value: eloInfo.elo.toFixed(0),
+                  sub: eloInfo.trend >= 0 ? `+${eloInfo.trend.toFixed(1)}` : eloInfo.trend.toFixed(1),
+                  color: eloInfo.trend > 5 ? "var(--accent-green)" : eloInfo.trend < -5 ? "var(--accent-red)" : undefined,
+                }] : []),
               ].map((s) => (
                 <div key={s.label}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 2 }}>{s.label}</div>
                   <div className="stat-number" style={{ fontSize: 20, fontWeight: 700, color: s.color || "var(--text-primary)" }}>{s.value}</div>
+                  {s.sub && <div style={{ fontSize: 11, color: s.color || "var(--text-muted)", fontFamily: "'JetBrains Mono', monospace" }}>{s.sub} L10</div>}
                 </div>
               ))}
             </div>
@@ -267,10 +311,10 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
       })()}
 
       {/* ===== STATS DASHBOARD: Ratings Chart + Four Factors ===== */}
-      {detail?.teamStats && (
-        <div style={{ display: "grid", gridTemplateColumns: detail.ratingHistory?.length ? "1fr 1fr" : "1fr", gap: 20, marginBottom: 28 }}>
+      {liveStats && (
+        <div style={{ display: "grid", gridTemplateColumns: ratingHistory?.length ? "1fr 1fr" : "1fr", gap: 20, marginBottom: 28 }}>
           {/* Off/Def Rating Over Time — only shown when history data exists */}
-          {detail.ratingHistory?.length > 0 && (
+          {ratingHistory?.length > 0 && (
             <div style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: 20 }}>
               <h3 className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
                 <Activity size={14} style={{ color: "var(--accent-blue)" }} />
@@ -281,7 +325,7 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 14, height: 3, borderRadius: 2, background: "var(--accent-red)" }} /> DRtg</span>
               </div>
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={detail.ratingHistory}>
+                <LineChart data={ratingHistory}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
                   <XAxis dataKey="game" axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 9 }} />
                   <YAxis domain={["auto", "auto"]} axisLine={false} tickLine={false} tick={{ fill: "#9e8878", fontSize: 10 }} />
@@ -301,12 +345,12 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
             </h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {[
-                { label: "eFG%", value: detail.teamStats.efgPct, desc: "Effective FG% adjusts for 3-pointers being worth more", avg: 53.0 },
-                { label: "TOV%", value: detail.teamStats.tovPct, desc: "Turnover rate — lower is better", avg: 13.0, invert: true },
-                { label: "ORB%", value: detail.teamStats.orbPct, desc: "Offensive rebound percentage", avg: 24.0 },
-                { label: "FT Rate", value: detail.teamStats.ftRate, desc: "Free throw attempts per FGA", avg: 25.0 },
-                { label: "Pace", value: detail.teamStats.pace, desc: "Possessions per 48 minutes", avg: 100.0 },
-                { label: "Net Rtg", value: detail.teamStats.netRtg, desc: "Point differential per 100 possessions", avg: 0 },
+                { label: "eFG%", value: liveStats.efg_pct, desc: "Effective FG% adjusts for 3-pointers being worth more", avg: 53.0 },
+                { label: "TOV%", value: liveStats.tov_pct, desc: "Turnover rate — lower is better", avg: 13.0, invert: true },
+                { label: "ORB%", value: liveStats.orb_pct, desc: "Offensive rebound percentage", avg: 24.0 },
+                { label: "FT Rate", value: liveStats.ft_rate, desc: "Free throw attempts per FGA", avg: 25.0 },
+                { label: "Pace", value: liveStats.pace, desc: "Possessions per 48 minutes", avg: 100.0 },
+                { label: "Net Rtg", value: liveStats.net_rtg, desc: "Point differential per 100 possessions", avg: 0 },
               ].map((f) => {
                 const better = f.invert ? f.value < f.avg : f.value > f.avg;
                 const barWidth = f.avg !== 0
@@ -332,7 +376,7 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
       )}
 
       {/* ===== HOME VS AWAY SPLITS ===== */}
-      {detail?.homeSplits && (
+      {liveStats && (
         <div style={{ marginBottom: 28 }}>
           <h2 className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
             <Home size={18} style={{ color: "var(--accent-blue)" }} />
@@ -340,8 +384,8 @@ export default function TeamDetailPage({ teamAbbr, onBack }) {
           </h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {[
-              { label: "Home", record: homeRecord, splits: detail.homeSplits },
-              { label: "Away", record: awayRecord, splits: detail.awaySplits },
+              { label: "Home", record: homeRecord, splits: { ppg: liveStats.home_ppg, oppPpg: liveStats.home_opp_ppg, fgPct: liveStats.home_fg_pct, tpPct: liveStats.home_tp_pct } },
+              { label: "Away", record: awayRecord, splits: { ppg: liveStats.away_ppg, oppPpg: liveStats.away_opp_ppg, fgPct: liveStats.away_fg_pct, tpPct: liveStats.away_tp_pct } },
             ].map((s) => (
               <div key={s.label} style={{ background: "var(--bg-secondary)", borderRadius: 12, border: "1px solid var(--border-color)", padding: "20px 24px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>

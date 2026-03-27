@@ -2,12 +2,22 @@ import React from "react";
 import { TEAMS } from "../data/teams.js";
 import TeamLogo from "./TeamLogo.jsx";
 
-export default function GameCard({ game, onClick }) {
+export default function GameCard({ game, onClick, prediction = null }) {
   const homeTeam = TEAMS[game.homeTeam];
   const awayTeam = TEAMS[game.awayTeam];
   const isLive = game.status === "LIVE";
   const isFinal = game.status === "FINAL";
   const isUpcoming = game.status === "UPCOMING";
+
+  // Win probability — prefer XGBoost, fall back to Claude confidence
+  const homeWinProb = isUpcoming && prediction
+    ? prediction.home_win_prob != null
+      ? prediction.home_win_prob
+      : prediction.predictedWinner === game.homeTeam
+        ? (prediction.confidence || 0.6)
+        : 1 - (prediction.confidence || 0.6)
+    : null;
+  const awayWinProb = homeWinProb != null ? 1 - homeWinProb : null;
 
   return (
     <div
@@ -118,6 +128,59 @@ export default function GameCard({ game, onClick }) {
           </span>
         </div>
       </div>
+
+      {/* Prediction section — upcoming games only */}
+      {isUpcoming && prediction && (
+        <div style={{ marginTop: 14, borderTop: "1px solid var(--border-color)", paddingTop: 12 }}>
+          {/* Win probability bar */}
+          {homeWinProb != null && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, color: awayTeam?.color }}>{game.awayTeam} {Math.round(awayWinProb * 100)}%</span>
+                <span style={{ fontWeight: 600, color: homeTeam?.color }}>{Math.round(homeWinProb * 100)}% {game.homeTeam}</span>
+              </div>
+              <div style={{ height: 5, borderRadius: 3, background: "var(--bg-tertiary)", overflow: "hidden", display: "flex" }}>
+                <div style={{ width: `${awayWinProb * 100}%`, background: awayTeam?.color || "var(--accent-blue)", transition: "width 0.4s" }} />
+                <div style={{ flex: 1, background: homeTeam?.color || "var(--accent)" }} />
+              </div>
+            </div>
+          )}
+
+          {/* Pick + spread */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Pick:</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>
+                {prediction.predictedWinner}
+                {prediction.spread != null && (
+                  <span style={{ fontWeight: 500, color: "var(--text-muted)", marginLeft: 4 }}>
+                    {prediction.spread > 0 ? `+${prediction.spread}` : prediction.spread}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 2 }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i < Math.round((prediction.confidence || 0.6) * 4) ? "var(--accent-blue)" : "var(--bg-tertiary)" }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Predicted score */}
+          {prediction.awayScorePred != null && prediction.homeScorePred != null && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+              {game.awayTeam} {prediction.awayScorePred} – {prediction.homeScorePred} {game.homeTeam} projected
+            </div>
+          )}
+
+          {/* Upset alert */}
+          {prediction.upsetAlert && (
+            <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.12)", padding: "3px 8px", borderRadius: 4, display: "inline-block" }}>
+              ⚡ UPSET WATCH
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Quarter-by-Quarter (if finished or live) */}
       {game.quarterScores && (

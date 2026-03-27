@@ -67,6 +67,22 @@ def load_profiles(conn):
     return df.set_index("player_id")
 
 
+def load_elo(elo_path=None):
+    """
+    Load Elo ratings from elo_ratings.json.
+    Returns dict: team -> { elo, trend }
+    Returns empty dict if file missing.
+    """
+    if elo_path is None:
+        elo_path = MODEL_DIR / "elo_ratings.json"
+    if not Path(elo_path).exists():
+        return {}
+    with open(elo_path) as f:
+        data = json.load(f)
+    return {t["team"]: {"elo": t["elo"], "trend": t.get("trend", 0.0)}
+            for t in data.get("teams", [])}
+
+
 def build_team_game_stats(logs):
     """Aggregate player game logs into team-level stats per game."""
     # For each game, compute team-level totals
@@ -126,7 +142,7 @@ def compute_rolling_features(team_games, windows=(5, 10)):
     return rolling_feats
 
 
-def build_matchup_dataset(team_games, rolling_feats, standings, profiles):
+def build_matchup_dataset(team_games, rolling_feats, standings, profiles, elo_ratings=None):
     """Pair home and away teams to create matchup-level training rows."""
     # Get home games
     home_games = team_games[team_games["home"] == 1].copy()
@@ -222,6 +238,14 @@ def build_matchup_dataset(team_games, rolling_feats, standings, profiles):
                 h_val = feat[h_key] if feat[h_key] is not None else 0
                 a_val = feat[a_key] if feat[a_key] is not None else 0
                 feat[f"diff_{stat}"] = h_val - a_val
+
+        # Elo features (snapshot at time of game — use current ratings as proxy for training)
+        if elo_ratings:
+            for prefix, team in [("h", home_team), ("a", away_team)]:
+                elo_info = elo_ratings.get(team, {})
+                feat[f"{prefix}_elo"] = elo_info.get("elo", 1500.0)
+                feat[f"{prefix}_elo_trend"] = elo_info.get("trend", 0.0)
+            feat["diff_elo"] = feat.get("h_elo", 1500) - feat.get("a_elo", 1500)
 
         # Targets
         feat["home_pts"] = int(hg["pts"])
@@ -364,6 +388,7 @@ def predict_games(conn, game_date=None):
     logs = load_game_logs(conn)
     standings = load_standings(conn)
     profiles = load_profiles(conn)
+    elo_ratings = load_elo()
 
     team_games = build_team_game_stats(logs)
     rolling_feats = compute_rolling_features(team_games)
@@ -451,6 +476,14 @@ def predict_games(conn, game_date=None):
             a_val = feat.get(a_key, 0) or 0
             feat[f"diff_{stat}"] = h_val - a_val
 
+        # Elo features
+        if elo_ratings:
+            for prefix, team in [("h", home_team), ("a", away_team)]:
+                elo_info = elo_ratings.get(team, {})
+                feat[f"{prefix}_elo"] = elo_info.get("elo", 1500.0)
+                feat[f"{prefix}_elo_trend"] = elo_info.get("trend", 0.0)
+            feat["diff_elo"] = feat.get("h_elo", 1500) - feat.get("a_elo", 1500)
+
         # Build feature vector in correct column order
         x = np.array([[feat.get(c, 0) or 0 for c in feature_cols]])
 
@@ -519,8 +552,14 @@ def main():
         print("[XGBoost] Computing rolling features...")
         rolling_feats = compute_rolling_features(team_games)
 
+        elo_ratings = load_elo()
+        if elo_ratings:
+            print(f"[XGBoost] Loaded Elo ratings for {len(elo_ratings)} teams")
+        else:
+            print("[XGBoost] No Elo ratings found — run ml/elo_model.py first")
+
         print("[XGBoost] Building matchup dataset...")
-        df = build_matchup_dataset(team_games, rolling_feats, standings, profiles)
+        df = build_matchup_dataset(team_games, rolling_feats, standings, profiles, elo_ratings)
         print(f"  {len(df)} matchups built")
 
         if len(df) < 50:

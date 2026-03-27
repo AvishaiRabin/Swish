@@ -74,7 +74,7 @@ export const STYLES = `
     gap: 24px;
     white-space: nowrap;
   }
-  .ticker-track:hover { animation-play-state: running; }
+  .ticker-track:hover { animation-play-state: paused; }
 
   .score-scroll {
     scrollbar-width: none;
@@ -158,5 +158,14 @@ export const STYLES = `
     .mobile-bottom-nav {
       display: flex !important;
     }
+  }
+
+  /* Home page responsive */
+  @media (max-width: 1024px) {
+    .home-grid { grid-template-columns: 1fr !important; }
+  }
+  @media (max-width: 768px) {
+    .standings-grid { grid-template-columns: 1fr !important; }
+    .picks-grid { grid-template-columns: 1fr !important; }
   }
 `;

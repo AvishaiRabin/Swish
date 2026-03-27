@@ -241,7 +241,7 @@ export default function GamesPage({ onGameClick }) {
                   {isLive ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "var(--accent-red)" }}>
                       <div className="live-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent-red)" }} />
-                      Q{game.quarter} {game.timeRemaining}
+                      Live{game.quarter > 0 ? ` · Q${game.quarter} ${game.timeRemaining}` : ""}
                     </span>
                   ) : isFinal ? (
                     <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Final</span>

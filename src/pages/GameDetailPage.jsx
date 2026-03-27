@@ -20,6 +20,7 @@ export default function GameDetailPage({ gameId, onBack, fallbackGame = null }) 
   const [liveBoxScore, setLiveBoxScore] = useState(null);
   const [boxScoreLoading, setBoxScoreLoading] = useState(false);
   const [boxScoreTeam, setBoxScoreTeam] = useState("away"); // "away" | "home"
+  const [boxScoreRetryKey, setBoxScoreRetryKey] = useState(0);
 
   // If we have no game object (e.g. direct navigation without fallback),
   // try to find it by scanning recent scoreboards (today + yesterday).
@@ -44,18 +45,25 @@ export default function GameDetailPage({ gameId, onBack, fallbackGame = null }) 
   }, [gameId, liveGame, fallbackGame]);
 
   // Fetch live box score from NBA API when no mock detail exists.
+  // Polls every 30s while game is live.
   useEffect(() => {
     if (!game || mockDetail) return;
     if (game.status === "UPCOMING") return;
     let cancelled = false;
-    setBoxScoreLoading(true);
-    clearEndpointCache("boxscoretraditionalv3");
-    fetchBoxScore(gameId, game.homeTeam, game.awayTeam)
-      .then((data) => { if (!cancelled && data) setLiveBoxScore(data); })
-      .catch(() => { })
-      .finally(() => { if (!cancelled) setBoxScoreLoading(false); });
-    return () => { cancelled = true; };
-  }, [gameId, game?.status, mockDetail]);
+
+    const load = (showSpinner) => {
+      if (showSpinner) setBoxScoreLoading(true);
+      clearEndpointCache("boxscoretraditionalv3");
+      fetchBoxScore(gameId, game.homeTeam, game.awayTeam)
+        .then((data) => { if (!cancelled && data) setLiveBoxScore(data); })
+        .catch(() => { })
+        .finally(() => { if (!cancelled && showSpinner) setBoxScoreLoading(false); });
+    };
+
+    load(true);
+    const interval = game.status === "LIVE" ? setInterval(() => load(false), 30000) : null;
+    return () => { cancelled = true; if (interval) clearInterval(interval); };
+  }, [gameId, game?.status, mockDetail, boxScoreRetryKey]);
 
   const detail = mockDetail || liveBoxScore;
 
@@ -81,6 +89,15 @@ export default function GameDetailPage({ gameId, onBack, fallbackGame = null }) 
   const awayKey = detail?.awayTricode || game.awayTeam;
   const homeStats = detail?.teamStats?.[homeKey];
   const awayStats = detail?.teamStats?.[awayKey];
+
+  // scoreboardv3 returns score=0 for past-date games (pre-game state, not final result).
+  // When the box score is loaded, derive the real totals by summing player points.
+  const boxHomePlayers = detail?.boxScore?.[homeKey];
+  const boxAwayPlayers = detail?.boxScore?.[awayKey];
+  const boxHomeTotal = boxHomePlayers?.length ? boxHomePlayers.reduce((s, p) => s + p.pts, 0) : null;
+  const boxAwayTotal = boxAwayPlayers?.length ? boxAwayPlayers.reduce((s, p) => s + p.pts, 0) : null;
+  const displayHomeScore = (isFinal && game.homeScore === 0 && boxHomeTotal != null) ? boxHomeTotal : game.homeScore;
+  const displayAwayScore = (isFinal && game.awayScore === 0 && boxAwayTotal != null) ? boxAwayTotal : game.awayScore;
 
   // Cumulative score line chart — built from per-period scores in the scoreboard data
   const PERIOD_LABELS = ["Q1", "Q2", "Q3", "Q4", "OT1", "OT2", "OT3"];
@@ -274,7 +291,7 @@ export default function GameDetailPage({ gameId, onBack, fallbackGame = null }) 
           {isLive ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(239, 68, 68, 0.15)", padding: "5px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700, color: "var(--accent-red)" }}>
               <div className="live-pulse" style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent-red)" }} />
-              Q{game.quarter} — {game.timeRemaining}
+              Live{game.quarter > 0 ? ` · Q${game.quarter} ${game.timeRemaining}` : ""}
             </span>
           ) : isFinal ? (
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px", background: "var(--bg-tertiary)", padding: "5px 14px", borderRadius: 8 }}>Final</span>
@@ -297,12 +314,12 @@ export default function GameDetailPage({ gameId, onBack, fallbackGame = null }) 
           {/* Score */}
           <div style={{ textAlign: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-              <span className="stat-number" style={{ fontSize: 48, fontWeight: 800, color: game.awayScore >= game.homeScore ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                {game.status !== "UPCOMING" ? game.awayScore : "-"}
+              <span className="stat-number" style={{ fontSize: 48, fontWeight: 800, color: displayAwayScore >= displayHomeScore ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                {game.status !== "UPCOMING" ? displayAwayScore : "-"}
               </span>
               <span style={{ fontSize: 24, color: "var(--text-muted)", fontWeight: 300 }}>—</span>
-              <span className="stat-number" style={{ fontSize: 48, fontWeight: 800, color: game.homeScore >= game.awayScore ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                {game.status !== "UPCOMING" ? game.homeScore : "-"}
+              <span className="stat-number" style={{ fontSize: 48, fontWeight: 800, color: displayHomeScore >= displayAwayScore ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                {game.status !== "UPCOMING" ? displayHomeScore : "-"}
               </span>
             </div>
             {game.broadcast && (
@@ -495,6 +512,12 @@ export default function GameDetailPage({ gameId, onBack, fallbackGame = null }) 
             <>
               <p style={{ fontSize: 15, color: "var(--text-secondary)" }}>Box score data not available for this game.</p>
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>Data may not yet be available from the NBA API.</p>
+              <button
+                onClick={() => { setLiveBoxScore(null); setBoxScoreRetryKey((k) => k + 1); }}
+                style={{ marginTop: 14, background: "var(--accent-blue)", border: "none", borderRadius: 8, padding: "8px 20px", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}
+              >
+                Retry
+              </button>
             </>
           )}
         </div>

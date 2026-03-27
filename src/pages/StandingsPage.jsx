@@ -1,16 +1,22 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Trophy, ChevronDown, ChevronUp, Flame, Shield } from "lucide-react";
+import { Trophy, ChevronDown, ChevronUp, Flame, Shield, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { TEAMS } from "../data/teams.js";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import { fetchEloRatings } from "../nbaApi.js";
 
 export default function StandingsPage() {
   const TOTAL_GAMES = 82;
   const liveData = useLiveData();
-  const [viewMode, setViewMode] = useState("conference"); // "conference" | "division"
+  const [viewMode, setViewMode] = useState("conference"); // "conference" | "division" | "power"
   const [confTab, setConfTab] = useState("West"); // "East" | "West"
   const [divTab, setDivTab] = useState("Atlantic"); // one of the 6 divisions
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
+  const [eloData, setEloData] = useState(null);
+
+  useEffect(() => {
+    fetchEloRatings().then((d) => { if (d?.teams?.length) setEloData(d); }).catch(() => {});
+  }, []);
 
   const handleSort = (key) => {
     setSortConfig((prev) => {
@@ -584,6 +590,93 @@ export default function StandingsPage() {
     );
   };
 
+  const renderPowerRankings = () => {
+    if (!eloData?.teams?.length) {
+      return (
+        <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
+          <TrendingUp size={32} style={{ marginBottom: 12, opacity: 0.4 }} />
+          <p style={{ fontSize: 14 }}>Elo ratings not yet computed.</p>
+          <p style={{ fontSize: 12, marginTop: 4 }}>Run <code>python ml/elo_model.py</code> to generate.</p>
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid var(--border-color)", borderRadius: 12, overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 110px 110px 110px 140px", gap: 0, padding: "10px 16px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)" }}>
+          {["RK", "TEAM", "ELO", "TREND (L10)", "PEAK", "LAST 5"].map((h) => (
+            <span key={h} style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em" }}>{h}</span>
+          ))}
+        </div>
+        {eloData.teams.map((t, i) => {
+          const teamInfo = TEAMS[t.team];
+          const trendColor = t.trend > 5 ? "var(--accent-green)" : t.trend < -5 ? "var(--accent-red)" : "var(--text-secondary)";
+          const TrendIcon = t.trend > 5 ? TrendingUp : t.trend < -5 ? TrendingDown : Minus;
+          return (
+            <div
+              key={t.team}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "48px 1fr 110px 110px 110px 140px",
+                gap: 0,
+                padding: "12px 16px",
+                borderBottom: i < eloData.teams.length - 1 ? "1px solid var(--border-color)" : "none",
+                background: i % 2 === 0 ? "var(--bg-primary)" : "var(--bg-secondary)",
+                alignItems: "center",
+              }}
+            >
+              {/* Rank */}
+              <span style={{ fontSize: 14, fontWeight: 700, color: i < 3 ? "var(--accent-amber)" : "var(--text-muted)", fontFamily: "'JetBrains Mono', monospace" }}>
+                #{t.rank}
+              </span>
+              {/* Team */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <TeamLogo abbr={t.team} size={28} />
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{teamInfo?.city || t.team} {teamInfo?.name || ""}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.team}</div>
+                </div>
+              </div>
+              {/* Elo */}
+              <span style={{ fontSize: 16, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-primary)" }}>
+                {t.elo.toFixed(0)}
+              </span>
+              {/* Trend */}
+              <div style={{ display: "flex", alignItems: "center", gap: 4, color: trendColor }}>
+                <TrendIcon size={14} />
+                <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {t.trend >= 0 ? "+" : ""}{t.trend.toFixed(1)}
+                </span>
+              </div>
+              {/* Peak */}
+              <span style={{ fontSize: 13, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>
+                {t.peak?.toFixed(0) ?? "—"}
+              </span>
+              {/* Last 5 W/L dots */}
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                {(t.last5 || []).map((g, gi) => (
+                  <div
+                    key={gi}
+                    title={`vs ${g.opponent}: ${g.win ? "W" : "L"} ${g.margin > 0 ? "+" : ""}${g.margin}`}
+                    style={{
+                      width: 20, height: 20,
+                      borderRadius: "50%",
+                      background: g.win ? "var(--accent-green)" : "var(--accent-red)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, fontWeight: 800, color: "white",
+                    }}
+                  >
+                    {g.win ? "W" : "L"}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div
       className="fade-in"
@@ -618,7 +711,7 @@ export default function StandingsPage() {
         {/* View Toggles */}
         <div style={{ display: "flex", gap: 8 }}>
           {/* East / West — only visible in conference mode */}
-          {viewMode === "conference" && (
+          {viewMode === "conference" && viewMode !== "power" && (
             <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
               {["West", "East"].map((conf) => (
                 <button
@@ -666,11 +759,12 @@ export default function StandingsPage() {
               ))}
             </div>
           )}
-          {/* Conference / Division */}
+          {/* Conference / Division / Power */}
           <div style={{ display: "flex", background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden" }}>
             {[
               { key: "conference", label: "Conference" },
               { key: "division", label: "Division" },
+              { key: "power", label: "Power Rankings" },
             ].map((opt) => (
               <button
                 key={opt.key}
@@ -698,21 +792,19 @@ export default function StandingsPage() {
       </div>
 
       {/* Sort hint */}
-      <p
-        style={{
-          fontSize: 12,
-          color: "var(--text-muted)",
-          marginBottom: 20,
-        }}
-      >
-        Click any column header to sort. Click again to reverse. Click a third time to reset.
-      </p>
+      {viewMode !== "power" && (
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 20 }}>
+          Click any column header to sort. Click again to reverse. Click a third time to reset.
+        </p>
+      )}
 
       {/* Tables */}
       {viewMode === "conference" ? (
         renderConferenceTable(confTab, liveData.standings[confTab])
-      ) : (
+      ) : viewMode === "division" ? (
         renderDivisionView()
+      ) : (
+        renderPowerRankings()
       )}
     </div>
   );

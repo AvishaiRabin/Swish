@@ -32,28 +32,19 @@ export default function ScoreCard({ game, onClick }) {
         }}
       >
         {isLive ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              fontSize: 11,
-              fontWeight: 700,
-              color: "var(--accent-red)",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <div
               className="live-pulse"
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "var(--accent-red)",
-              }}
+              style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent-red)" }}
             />
-            Q{game.quarter} {game.timeRemaining}
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-red)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Live
+            </span>
+            {game.quarter > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", letterSpacing: "0.3px" }}>
+                · Q{game.quarter} {game.timeRemaining}
+              </span>
+            )}
           </div>
         ) : isFinal ? (
           <span

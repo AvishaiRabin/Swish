@@ -210,6 +210,30 @@ db.exec(`
     updated_at        INTEGER
   );
 
+  CREATE TABLE IF NOT EXISTS team_stats_cache (
+    team           TEXT PRIMARY KEY,
+    ortg           REAL, drtg REAL, pace REAL, net_rtg REAL,
+    efg_pct        REAL, tov_pct REAL, orb_pct REAL, ft_rate REAL,
+    ppg            REAL, opp_ppg REAL, fg_pct REAL, tp_pct REAL,
+    home_ppg       REAL, home_opp_ppg REAL, home_fg_pct REAL, home_tp_pct REAL,
+    away_ppg       REAL, away_opp_ppg REAL, away_fg_pct REAL, away_tp_pct REAL,
+    games_played   INTEGER,
+    home_games     INTEGER, away_games INTEGER,
+    updated_at     INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS team_game_results (
+    team        TEXT NOT NULL,
+    season      TEXT NOT NULL,
+    game_date   TEXT NOT NULL,
+    opponent    TEXT,
+    home        INTEGER,
+    pts         INTEGER,
+    opp_pts     INTEGER,
+    win         INTEGER,
+    PRIMARY KEY (team, season, game_date)
+  );
+
   CREATE TABLE IF NOT EXISTS prediction_results (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     prediction_date TEXT NOT NULL,
@@ -322,7 +346,7 @@ function toISODate(raw) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function isStale(key, ttlMs = 12 * 60 * 60 * 1000) {
+function isStale(key, ttlMs = 24 * 60 * 60 * 1000) {
   const row = db.prepare("SELECT updated_at FROM meta WHERE key = ?").get(key);
   if (!row) return true;
   return Date.now() - row.updated_at > ttlMs;
@@ -743,8 +767,8 @@ function classifyTeamStyle(fp) {
     ["Defensive-Focused", (fp.twoWayWing || 0) + (fp.defensiveAnchor || 0) + (fp.threeAndDWing || 0)],
   ];
   scores.sort((a, b) => b[1] - a[1]);
-  if (scores[0][1] > scores[1][1] * 1.3) return scores[0][0];
-  return "Balanced";
+  // Always return the top-scoring style — never "Balanced"
+  return scores[0][0];
 }
 
 // ---------------------------------------------------------------------------
@@ -787,6 +811,121 @@ function normalizeScores(raw) {
   const norm = {};
   for (const [k, v] of entries) norm[k] = v / total;
   return norm;
+}
+
+// ---------------------------------------------------------------------------
+// Team stats cache — compute advanced + split stats from player_game_logs
+// ---------------------------------------------------------------------------
+function refreshTeamStats() {
+  const teams = db.prepare("SELECT DISTINCT team FROM players WHERE team IS NOT NULL").pluck().all();
+  if (!teams.length) { console.log("[TeamStats] No teams found"); return; }
+
+  const gameStmt = db.prepare(`
+    SELECT g.game_date, g.home,
+           SUM(g.pts) AS pts, SUM(g.fga) AS fga, SUM(g.fgm) AS fgm,
+           SUM(g.fg3a) AS fg3a, SUM(g.fg3m) AS fg3m,
+           SUM(g.fta) AS fta, SUM(g.ftm) AS ftm,
+           SUM(g.tov) AS tov, SUM(g.reb) AS reb,
+           SUM(g.plus_minus) AS plus_minus,
+           SUM(g.min_played) AS total_min
+    FROM player_game_logs g
+    LEFT JOIN players p ON g.player_id = p.player_id
+    WHERE COALESCE(g.team, p.team) = ?
+      AND g.season = ?
+    GROUP BY g.game_date
+    ORDER BY g.game_date ASC
+  `);
+
+  const ins = db.prepare(`
+    INSERT OR REPLACE INTO team_stats_cache VALUES (
+      ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+    )
+  `);
+
+  let count = 0;
+  db.transaction(() => {
+    for (const team of teams) {
+      const games = gameStmt.all(team, SEASON);
+      if (games.length < 5) continue;
+
+      // Overall totals
+      let tPts = 0, tFga = 0, tFgm = 0, tFg3a = 0, tFg3m = 0;
+      let tFta = 0, tFtm = 0, tTov = 0, tReb = 0, tPm = 0, tMin = 0;
+      // Home/away splits
+      let hPts = 0, hFga = 0, hFgm = 0, hFg3a = 0, hFg3m = 0, hFta = 0, hGames = 0, hOppPts = 0;
+      let aPts = 0, aFga = 0, aFgm = 0, aFg3a = 0, aFg3m = 0, aFta = 0, aGames = 0, aOppPts = 0;
+
+      for (const g of games) {
+        tPts += g.pts; tFga += g.fga; tFgm += g.fgm;
+        tFg3a += g.fg3a; tFg3m += g.fg3m;
+        tFta += g.fta; tFtm += g.ftm;
+        tTov += g.tov; tReb += g.reb;
+        tPm += g.plus_minus; tMin += g.total_min;
+        const oppPts = g.pts - g.plus_minus;
+        if (g.home === 1) {
+          hPts += g.pts; hFga += g.fga; hFgm += g.fgm;
+          hFg3a += g.fg3a; hFg3m += g.fg3m; hFta += g.fta;
+          hGames++; hOppPts += oppPts;
+        } else {
+          aPts += g.pts; aFga += g.fga; aFgm += g.fgm;
+          aFg3a += g.fg3a; aFg3m += g.fg3m; aFta += g.fta;
+          aGames++; aOppPts += oppPts;
+        }
+      }
+
+      const gp = games.length;
+      const oppPtsTotal = tPts - tPm;
+      // Estimated possessions
+      const poss = tFga + 0.44 * tFta + tTov;
+      // Per-48 pace estimate: possessions per 48 min of team play
+      // total_min is sum of all player minutes; divide by 5 for team minutes
+      const teamMin = tMin / 5;
+      const pace = teamMin > 0 ? (poss / teamMin) * 48 : 100;
+      const ortg = poss > 0 ? (tPts / poss) * 100 : 0;
+      const drtg = poss > 0 ? (oppPtsTotal / poss) * 100 : 0;
+      const netRtg = ortg - drtg;
+      // Four factors
+      const efgPct = tFga > 0 ? ((tFgm + 0.5 * tFg3m) / tFga) * 100 : 0;
+      const tovPct = poss > 0 ? (tTov / (tFga + 0.44 * tFta + tTov)) * 100 : 0;
+      // ORB% — we don't have offensive rebounds split, estimate from total reb vs expected
+      // Use a rough proxy: reb share compared to league average
+      const orbPct = gp > 0 ? (tReb / gp) / 44 * 24 : 24; // rough normalization
+      const ftRate = tFga > 0 ? (tFta / tFga) * 100 : 0;
+
+      // Overall shooting
+      const ppg = gp > 0 ? tPts / gp : 0;
+      const oppPpg = gp > 0 ? oppPtsTotal / gp : 0;
+      const fgPct = tFga > 0 ? (tFgm / tFga) * 100 : 0;
+      const tpPct = tFg3a > 0 ? (tFg3m / tFg3a) * 100 : 0;
+
+      // Home splits
+      const homePpg = hGames > 0 ? hPts / hGames : 0;
+      const homeOppPpg = hGames > 0 ? hOppPts / hGames : 0;
+      const homeFgPct = hFga > 0 ? (hFgm / hFga) * 100 : 0;
+      const homeTpPct = hFg3a > 0 ? (hFg3m / hFg3a) * 100 : 0;
+
+      // Away splits
+      const awayPpg = aGames > 0 ? aPts / aGames : 0;
+      const awayOppPpg = aGames > 0 ? aOppPts / aGames : 0;
+      const awayFgPct = aFga > 0 ? (aFgm / aFga) * 100 : 0;
+      const awayTpPct = aFg3a > 0 ? (aFg3m / aFg3a) * 100 : 0;
+
+      const r = (v) => Math.round(v * 10) / 10;
+      ins.run(
+        team,
+        r(ortg), r(drtg), r(pace), r(netRtg),
+        r(efgPct), r(tovPct), r(orbPct), r(ftRate),
+        r(ppg), r(oppPpg), r(fgPct), r(tpPct),
+        r(homePpg), r(homeOppPpg), r(homeFgPct), r(homeTpPct),
+        r(awayPpg), r(awayOppPpg), r(awayFgPct), r(awayTpPct),
+        gp, hGames, aGames,
+        Date.now()
+      );
+      count++;
+    }
+    db.prepare("INSERT OR REPLACE INTO meta VALUES ('team_stats_cache', ?)").run(Date.now());
+  })();
+  console.log(`[TeamStats] Computed stats for ${count} teams`);
 }
 
 function refreshTeamArchetypes() {
@@ -912,6 +1051,7 @@ function refreshTeamArchetypes() {
       count++;
     }
   })();
+  db.prepare("INSERT OR REPLACE INTO meta VALUES ('team_archetypes', ?)").run(Date.now());
   console.log(`[TeamArchetypes] Classified ${count} teams`);
 }
 
@@ -965,6 +1105,89 @@ async function refreshLineupProfiles() {
   console.log(`[LineupProfiles] Built ${count} lineup profiles`);
 }
 
+async function refreshTeamGameResults() {
+  const seasons = ["2024-25", "2025-26"];
+  const teams = Object.keys(TEAM_ID_ABBR).map((id) => ({ id: parseInt(id), abbr: TEAM_ID_ABBR[id] }));
+  const ins = db.prepare(`
+    INSERT OR IGNORE INTO team_game_results VALUES (?,?,?,?,?,?,?,?)
+  `);
+
+  let total = 0;
+  for (const season of seasons) {
+    for (const { id, abbr } of teams) {
+      try {
+        const data = await fetchNBAEndpoint("teamgamelogs", {
+          TeamID: id, Season: season, SeasonType: "Regular Season",
+          LeagueID: "00", DateFrom: "", DateTo: "",
+        });
+        const rows = parseResultSet(data, 0);
+        db.transaction(() => {
+          for (const r of rows) {
+            const matchup = r.MATCHUP || "";
+            const oppMatch = matchup.match(/(?:vs\.|@)\s*(\w+)/);
+            const opponent = oppMatch ? normalizeAbbr(oppMatch[1]) : null;
+            const isHome = matchup.includes("vs.") ? 1 : 0;
+            const pts = r.PTS ?? null;
+            // opp_pts derived from plus_minus: opp = pts - plus_minus
+            const oppPts = pts != null && r.PLUS_MINUS != null ? Math.round(pts - r.PLUS_MINUS) : null;
+            ins.run(
+              abbr, season, toISODate(r.GAME_DATE),
+              opponent, isHome,
+              pts, oppPts,
+              r.WL === "W" ? 1 : 0
+            );
+            total++;
+          }
+        })();
+      } catch (e) {
+        console.warn(`[TeamGameResults] ${abbr} ${season}: ${e.message}`);
+      }
+    }
+  }
+  db.prepare("INSERT OR REPLACE INTO meta VALUES ('team_game_results', ?)").run(Date.now());
+  console.log(`[TeamGameResults] Stored ${total} team-game rows`);
+}
+
+// Lightweight refresh: only the last 14 days of the current season.
+// Runs every 4 hours so last night's final scores are always available for the ticker.
+async function refreshRecentGameResults() {
+  const season = "2025-26";
+  const teams = Object.keys(TEAM_ID_ABBR).map((id) => ({ id: parseInt(id), abbr: TEAM_ID_ABBR[id] }));
+  const upsert = db.prepare(`
+    INSERT OR REPLACE INTO team_game_results VALUES (?,?,?,?,?,?,?,?)
+  `);
+  const d = new Date();
+  d.setDate(d.getDate() - 14);
+  const dateFrom = `${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getDate().toString().padStart(2, "0")}/${d.getFullYear()}`;
+
+  let total = 0;
+  for (const { id, abbr } of teams) {
+    try {
+      const data = await fetchNBAEndpoint("teamgamelogs", {
+        TeamID: id, Season: season, SeasonType: "Regular Season",
+        LeagueID: "00", DateFrom: dateFrom, DateTo: "",
+      });
+      const rows = parseResultSet(data, 0);
+      db.transaction(() => {
+        for (const r of rows) {
+          const matchup = r.MATCHUP || "";
+          const oppMatch = matchup.match(/(?:vs\.|@)\s*(\w+)/);
+          const opponent = oppMatch ? normalizeAbbr(oppMatch[1]) : null;
+          const isHome = matchup.includes("vs.") ? 1 : 0;
+          const pts = r.PTS ?? null;
+          const oppPts = pts != null && r.PLUS_MINUS != null ? Math.round(pts - r.PLUS_MINUS) : null;
+          upsert.run(abbr, season, toISODate(r.GAME_DATE), opponent, isHome, pts, oppPts, r.WL === "W" ? 1 : 0);
+          total++;
+        }
+      })();
+    } catch (e) {
+      console.warn(`[RecentResults] ${abbr}: ${e.message}`);
+    }
+  }
+  db.prepare("INSERT OR REPLACE INTO meta VALUES ('recent_game_results', ?)").run(Date.now());
+  console.log(`[RecentResults] Updated ${total} rows (last 14 days)`);
+}
+
 async function refreshAll(force = false) {
   await Promise.allSettled([
     (force || isStale("players")   || isEmpty("players"))         ? refreshPlayers()  : Promise.resolve(),
@@ -986,8 +1209,22 @@ async function refreshAll(force = false) {
   if (force || isStale("game_logs_current", 24 * 60 * 60 * 1000)) {
     await updateCurrentSeasonLogs().catch((e) => console.error("[GameLogs] Update error:", e.message));
   }
+  // Team stats cache — advanced stats + home/away splits from game logs
+  if (force || isStale("team_stats_cache", 24 * 60 * 60 * 1000) || isEmpty("team_stats_cache")) {
+    try { refreshTeamStats(); } catch (e) { console.error("[TeamStats] Error:", e.message); }
+  }
   // Team offensive/defensive archetype classification — depends on game logs + player profiles
-  try { refreshTeamArchetypes(); } catch (e) { console.error("[TeamArchetypes] Error:", e.message); }
+  if (force || isStale("team_archetypes", 24 * 60 * 60 * 1000) || isEmpty("team_archetypes")) {
+    try { refreshTeamArchetypes(); } catch (e) { console.error("[TeamArchetypes] Error:", e.message); }
+  }
+  // Team game results — actual final scores for all 30 teams, used by Elo model
+  if (force || isStale("team_game_results", 24 * 60 * 60 * 1000) || isEmpty("team_game_results")) {
+    await refreshTeamGameResults().catch((e) => console.error("[TeamGameResults] Error:", e.message));
+  }
+  // Recent results (last 14 days) — runs every 4h so ticker always shows last night's scores
+  if (force || isStale("recent_game_results", 4 * 60 * 60 * 1000)) {
+    await refreshRecentGameResults().catch((e) => console.error("[RecentResults] Error:", e.message));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1191,12 +1428,19 @@ async function gatherPredictionContext() {
     .map((s) => `${s.team}: ${s.wins}-${s.losses} DIFF:${s.diff} L10:${s.last10} Streak:${s.streak}`)
     .join("\n");
 
+  const eloStr = (abbr) => {
+    const e = eloMap[abbr];
+    if (!e) return "";
+    const trend = e.trend >= 0 ? `+${e.trend.toFixed(1)}` : e.trend.toFixed(1);
+    return ` [Elo:${e.elo.toFixed(0)} ${trend} L10 #${e.rank}]`;
+  };
+
   const gamesText = gamesToPredict.map((g) => {
     const home = TEAM_ID_ABBR[g.homeTeam?.teamId] || g.homeTeam?.teamTricode;
     const away = TEAM_ID_ABBR[g.awayTeam?.teamId] || g.awayTeam?.teamTricode;
     const homeLog = (gameLogs[home] || []).map((l) => `${l.matchup} ${l.wl} ${l.pts}pts`).join(", ");
     const awayLog = (gameLogs[away] || []).map((l) => `${l.matchup} ${l.wl} ${l.pts}pts`).join(", ");
-    return `${away}@${home} (${g.gameId}) | ${home} L3: ${homeLog} | ${away} L3: ${awayLog}`;
+    return `${away}${eloStr(away)}@${home}${eloStr(home)} (${g.gameId}) | ${home} L3: ${homeLog} | ${away} L3: ${awayLog}`;
   }).join("\n\n");
 
   const relevantPlayers = topPlayers.filter((p) => teamAbbrs.has(p.team)).slice(0, 20);
@@ -1266,6 +1510,20 @@ async function gatherPredictionContext() {
   const accuracyText = last30.total > 0
     ? `Your historical accuracy (last 30 days): ${last30.wins}/${last30.total} (${((last30.wins / last30.total) * 100).toFixed(1)}%). Adjust your approach based on past errors.`
     : "No historical predictions to reference yet.";
+
+  // Load Elo ratings for today's teams
+  const eloMap = {};
+  try {
+    const eloPath = path.join(__dirname, "ml", "models", "elo_ratings.json");
+    if (fs.existsSync(eloPath)) {
+      const eloData = JSON.parse(fs.readFileSync(eloPath, "utf8"));
+      for (const t of (eloData.teams || [])) {
+        if (teamAbbrs.has(t.team)) {
+          eloMap[t.team] = { elo: t.elo, trend: t.trend, rank: t.rank };
+        }
+      }
+    }
+  } catch (e) { /* skip if unavailable */ }
 
   // Load XGBoost predictions if available, match by team abbrs
   let xgboostText = "";
@@ -1455,6 +1713,32 @@ async function gradePredictions() {
   }
 }
 
+async function runEloRatings() {
+  const script = path.join(__dirname, "ml", "elo_model.py");
+  if (!fs.existsSync(script)) {
+    console.warn("[Elo] ml/elo_model.py not found, skipping");
+    return;
+  }
+  const lastRun = db.prepare("SELECT value FROM meta WHERE key='elo_last_run'").get();
+  if (lastRun && Date.now() - parseInt(lastRun.value) < 23 * 60 * 60 * 1000) {
+    console.log("[Elo] Skipping — ran less than 23h ago");
+    return;
+  }
+  return new Promise((resolve, reject) => {
+    const proc = spawn("python", [script], { stdio: "inherit" });
+    proc.on("close", (code) => {
+      if (code === 0) {
+        db.prepare("INSERT OR REPLACE INTO meta VALUES ('elo_last_run', ?)").run(Date.now());
+        console.log("[Elo] Ratings updated.");
+        resolve();
+      } else {
+        reject(new Error(`[Elo] Script exited with code ${code}`));
+      }
+    });
+    proc.on("error", reject);
+  });
+}
+
 async function runXGBoostPredictions() {
   const script = path.join(__dirname, "ml", "xgboost_model.py");
   const modelFile = path.join(__dirname, "ml", "models", "xgb_win.json");
@@ -1501,7 +1785,7 @@ async function runPredictionJobs(force = false) {
   // Skip if predictions already ran within the last 12 hours (avoid re-running on every restart)
   if (!force) {
     const last = db.prepare("SELECT updated_at FROM meta WHERE key = 'predictions'").get();
-    if (last && Date.now() - last.updated_at < 12 * 60 * 60 * 1000) {
+    if (last && Date.now() - last.updated_at < 24 * 60 * 60 * 1000) {
       console.log("[PredictionJobs] Skipping — last run was", Math.round((Date.now() - last.updated_at) / 3600000), "hours ago");
       // Still grade past predictions even if we skip generating new ones
       try { await gradePredictions(); } catch (e) { console.error("[Grading] Error:", e.message); }
@@ -1509,6 +1793,8 @@ async function runPredictionJobs(force = false) {
     }
   }
   console.log("[PredictionJobs] Starting...");
+  // Elo ratings updated daily from game logs
+  try { await runEloRatings(); } catch (e) { console.error("[Elo] Error:", e.message); }
   // XGBoost runs first so its output can be included in Claude's context
   try { await runXGBoostPredictions(); } catch (e) { console.error("[XGBoost] Error:", e.message); }
   try { await generatePredictions(); } catch (e) { console.error("[Predictions] Error:", e.message, e.stack); }
@@ -1686,6 +1972,22 @@ app.get("/api/db/lineup-profiles/matchups", (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Team stats endpoint — live computed stats replacing hardcoded TEAM_DETAILS
+// ---------------------------------------------------------------------------
+app.get("/api/db/team-stats", (req, res) => {
+  try {
+    const team = req.query.team;
+    const rows = team
+      ? db.prepare("SELECT * FROM team_stats_cache WHERE team = ?").all(team)
+      : db.prepare("SELECT * FROM team_stats_cache ORDER BY team").all();
+    res.json(rows);
+  } catch (e) {
+    console.error("[TeamStats] endpoint error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Archetype matchup analysis endpoints
 // ---------------------------------------------------------------------------
 app.get("/api/db/team-archetypes", (req, res) => {
@@ -1697,6 +1999,67 @@ app.get("/api/db/team-archetypes", (req, res) => {
     res.json(rows);
   } catch (e) {
     console.error("[TeamArchetypes] endpoint error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Team rating history — 5-game rolling ORtg/DRtg from player_game_logs
+// ---------------------------------------------------------------------------
+app.get("/api/db/team-rating-history", (req, res) => {
+  try {
+    const team = req.query.team;
+    if (!team) return res.status(400).json({ error: "team param required" });
+
+    // Aggregate player_game_logs into team game totals
+    const games = db.prepare(`
+      SELECT g.game_date,
+             SUM(g.pts) AS pts, SUM(g.fga) AS fga, SUM(g.fgm) AS fgm,
+             SUM(g.fg3a) AS fg3a, SUM(g.fg3m) AS fg3m,
+             SUM(g.fta) AS fta, SUM(g.ftm) AS ftm,
+             SUM(g.tov) AS tov, SUM(g.reb) AS reb,
+             SUM(g.plus_minus) AS plus_minus
+      FROM player_game_logs g
+      LEFT JOIN players p ON g.player_id = p.player_id
+      WHERE COALESCE(g.team, p.team) = ?
+        AND g.season = ?
+      GROUP BY g.game_date
+      ORDER BY g.game_date ASC
+    `).all(team, SEASON);
+
+    if (games.length < 5) return res.json([]);
+
+    // Compute 5-game rolling windows
+    const windowSize = 5;
+    const result = [];
+    for (let i = windowSize - 1; i < games.length; i++) {
+      let tPts = 0, tFga = 0, tFta = 0, tTov = 0, tPm = 0;
+      for (let j = i - windowSize + 1; j <= i; j++) {
+        tPts += games[j].pts;
+        tFga += games[j].fga;
+        tFta += games[j].fta;
+        tTov += games[j].tov;
+        tPm  += games[j].plus_minus;
+      }
+      // Estimated possessions per game
+      const poss = tFga + 0.44 * tFta + tTov;
+      const ortg = poss > 0 ? (tPts / poss) * 100 : 0;
+      // Opponent points = team points - plus_minus
+      const oppPts = tPts - tPm;
+      const drtg = poss > 0 ? (oppPts / poss) * 100 : 0;
+      const net = ortg - drtg;
+      const gameNum = i + 1;
+      result.push({
+        game: `G${gameNum - windowSize + 1}-${gameNum}`,
+        gameDate: games[i].game_date,
+        ortg: Math.round(ortg * 10) / 10,
+        drtg: Math.round(drtg * 10) / 10,
+        net: Math.round(net * 10) / 10,
+      });
+    }
+    res.json(result);
+  } catch (e) {
+    console.error("[TeamRatingHistory] Error:", e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -2169,6 +2532,37 @@ app.get("/api/predictions/today", (_req, res) => {
   });
 });
 
+// Returns actual final scores for a given date from team_game_results.
+// Used by the client to supplement scoreboardv3 which returns score=0 for past dates.
+app.get("/api/db/game-results", (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.status(400).json({ error: "date required (YYYY-MM-DD)" });
+  // Each game has two rows (one per team). Keep only home-team rows to deduplicate.
+  const rows = db.prepare(`
+    SELECT team, opponent, home, pts, opp_pts, win
+    FROM team_game_results
+    WHERE game_date = ? AND home = 1
+  `).all(date);
+  const games = rows.map((r) => ({
+    homeTeam: r.team,
+    awayTeam: r.opponent,
+    homeScore: r.pts,
+    awayScore: r.opp_pts,
+  }));
+  res.json({ games });
+});
+
+app.get("/api/db/elo-ratings", (_req, res) => {
+  const eloPath = path.join(__dirname, "ml", "models", "elo_ratings.json");
+  try {
+    if (!fs.existsSync(eloPath)) return res.json({ teams: [] });
+    const data = JSON.parse(fs.readFileSync(eloPath, "utf-8"));
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/predictions/xgboost", (_req, res) => {
   const predPath = path.join(__dirname, "ml", "models", "predictions.json");
   try {
@@ -2290,21 +2684,48 @@ function writeFileCache(key, endpoint, data, ttlOverride) {
 app.get("/api/nba/:endpoint", async (req, res) => {
   const { endpoint } = req.params;
   const cacheKey = buildCacheKey(endpoint, req.query);
-  // Past-date scoreboards are immutable — cache for 7 days instead of 5 minutes
+  // Past-date scoreboards are immutable — cache for 7 days instead of 5 minutes.
+  // Use string comparison (YYYY-MM-DD) to avoid UTC vs local timezone bugs where
+  // the server (UTC) treats the client's "today" as "yesterday" during late evenings.
   let ttl = FILE_CACHE_TTL[endpoint] || DEFAULT_FILE_TTL;
+  let isPastScoreboard = false;
   if (endpoint === "scoreboardv3" && req.query.GameDate) {
-    const today = new Date();
-    const reqDate = new Date(req.query.GameDate);
-    if (reqDate < today && reqDate.toDateString() !== today.toDateString()) {
+    const todayStr = new Date().toISOString().split("T")[0]; // e.g. "2026-03-22" UTC
+    // Only apply 7-day TTL for dates that are strictly 2+ days in the past —
+    // the 1-day buffer handles timezone offsets (e.g. EST user at 11 PM = next UTC day).
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split("T")[0];
+    if (req.query.GameDate < yesterdayStr) {
       ttl = 7 * 24 * 60 * 60 * 1000; // 7 days
+    } else if (req.query.GameDate < todayStr) {
+      // Yesterday: use 4-hour TTL once all games are final, 5 min while still in progress
+      ttl = 4 * 60 * 60 * 1000;
+      isPastScoreboard = true;
     }
   }
 
   const cached = readFileCache(cacheKey);
   if (cached) {
-    res.set("Cache-Control", `public, max-age=${Math.floor(ttl / 1000)}`);
-    res.set("X-Cache", "HIT");
-    return res.json(cached);
+    // For past-date scoreboards (yesterday): bypass cache if any game is not final.
+    // This prevents serving mid-game scores after games have ended.
+    if (isPastScoreboard) {
+      const games = cached.scoreboard?.games || [];
+      const allFinal = games.length > 0 && games.every((g) => g.gameStatus === 3);
+      if (!allFinal) {
+        // Fall through to re-fetch fresh data from NBA API
+      } else {
+        res.set("Cache-Control", `public, max-age=${Math.floor(ttl / 1000)}`);
+        res.set("X-Cache", "HIT");
+        return res.json(cached);
+      }
+    } else {
+      // NOTE: Do NOT mutate cached game statuses here. The client already forces
+      // past-date games to FINAL using its local timezone (more accurate than server UTC).
+      res.set("Cache-Control", `public, max-age=${Math.floor(ttl / 1000)}`);
+      res.set("X-Cache", "HIT");
+      return res.json(cached);
+    }
   }
 
   const query = new URLSearchParams(req.query).toString();
@@ -2319,7 +2740,18 @@ app.get("/api/nba/:endpoint", async (req, res) => {
     if (endpoint === "scoreboardv3" && ttl > FILE_CACHE_TTL.scoreboardv3) {
       const games = data.scoreboard?.games || [];
       const allFinal = games.length > 0 && games.every((g) => g.gameStatus === 3);
-      if (!allFinal) writeTtl = FILE_CACHE_TTL.scoreboardv3; // 5 min — keep refreshing
+      if (!allFinal) writeTtl = FILE_CACHE_TTL.scoreboardv3; // 5 min — keep re-fetching
+    }
+    // Don't cache boxscoretraditionalv3 when players are empty — game may be live
+    // and the CDN fallback (client-side) needs a fresh v3 call each time to trigger.
+    if (endpoint === "boxscoretraditionalv3") {
+      const bt = data.boxScoreTraditional;
+      const hasPlayers = bt?.homeTeam?.players?.length || bt?.awayTeam?.players?.length;
+      if (!hasPlayers) {
+        res.set("Cache-Control", "no-cache");
+        res.set("X-Cache", "MISS");
+        return res.json(data);
+      }
     }
     writeFileCache(cacheKey, endpoint, data, writeTtl);
     res.set("Cache-Control", `public, max-age=${Math.floor(writeTtl / 1000)}`);
@@ -2362,6 +2794,15 @@ const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Courtside proxy running on http://localhost:${PORT}`);
   console.log(`SQLite DB: ${DB_PATH}`);
+  // One-time migration: remove stale "Balanced" labels so team_archetypes refreshes with correct labels
+  try {
+    const stale = db.prepare("SELECT COUNT(*) AS c FROM team_archetypes WHERE off_archetype = 'Balanced' OR def_archetype = 'Balanced'").get();
+    if (stale?.c > 0) {
+      db.prepare("DELETE FROM team_archetypes").run();
+      db.prepare("DELETE FROM meta WHERE key = 'team_archetypes'").run();
+      console.log(`[Migration] Cleared ${stale.c} stale 'Balanced' team archetype rows — will re-classify on next refresh`);
+    }
+  } catch {}
   // Seed DB on startup; re-check every 6 hours
   refreshAll().catch((e) => console.error("[DB] Initial refresh error:", e.message));
   setInterval(
