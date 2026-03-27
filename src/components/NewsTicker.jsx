@@ -99,7 +99,7 @@ export default function NewsTicker({ items }) {
         )}
 
         {/* Separator */}
-        <span style={{ color: "var(--text-secondary)", margin: "0 10px", fontSize: 14 }}>\u00b7</span>
+        <span style={{ color: "var(--text-secondary)", margin: "0 10px", fontSize: 14 }}>{"\u00b7"}</span>
       </span>
     );
   };

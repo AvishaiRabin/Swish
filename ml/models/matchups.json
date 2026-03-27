@@ -1,37 +1,17 @@
 {
-  "date": "2026-03-16",
+  "date": "2026-03-26",
   "matchups": [
     {
-      "home_team": "ATL",
-      "away_team": "ORL"
+      "home_team": "CHA",
+      "away_team": "NYK"
     },
     {
-      "home_team": "WAS",
-      "away_team": "GSW"
+      "home_team": "DET",
+      "away_team": "NOP"
     },
     {
-      "home_team": "BKN",
-      "away_team": "POR"
-    },
-    {
-      "home_team": "BOS",
-      "away_team": "PHX"
-    },
-    {
-      "home_team": "CHI",
-      "away_team": "MEM"
-    },
-    {
-      "home_team": "NOP",
-      "away_team": "DAL"
-    },
-    {
-      "home_team": "HOU",
-      "away_team": "LAL"
-    },
-    {
-      "home_team": "LAC",
-      "away_team": "SAS"
+      "home_team": "ORL",
+      "away_team": "SAC"
     }
   ]
 }

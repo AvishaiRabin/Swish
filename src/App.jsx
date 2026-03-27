@@ -70,7 +70,10 @@ function HomeRoute() {
         const match = PLAYERS.find((p) => p.id === playerIdOrName || p.name === playerIdOrName);
         navigate(match ? `/players/${match.id}` : "/players");
       }}
-      onNavigate={(page) => navigate(`/${page === "home" ? "" : page}`)}
+      onNavigate={(page, param) => {
+        if (page === "teamDetail" && param) navigate(`/teams/${param}`);
+        else navigate(`/${page === "home" ? "" : page}`);
+      }}
     />
   );
 }

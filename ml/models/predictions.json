@@ -1,69 +1,29 @@
 {
-  "date": "2026-03-16",
+  "date": "2026-03-26",
   "predictions": [
     {
-      "home_team": "ATL",
-      "away_team": "ORL",
-      "home_win_prob": 0.445,
-      "predicted_winner": "ORL",
-      "predicted_spread": 1.2,
-      "confidence": 0.555
+      "home_team": "CHA",
+      "away_team": "NYK",
+      "home_win_prob": 0.368,
+      "predicted_winner": "NYK",
+      "predicted_spread": -2.4,
+      "confidence": 0.632
     },
     {
-      "home_team": "WAS",
-      "away_team": "GSW",
-      "home_win_prob": 0.514,
-      "predicted_winner": "WAS",
-      "predicted_spread": 6.9,
-      "confidence": 0.514
-    },
-    {
-      "home_team": "BKN",
-      "away_team": "POR",
-      "home_win_prob": 0.044,
-      "predicted_winner": "POR",
-      "predicted_spread": -28.2,
-      "confidence": 0.956
-    },
-    {
-      "home_team": "BOS",
-      "away_team": "PHX",
-      "home_win_prob": 0.628,
-      "predicted_winner": "BOS",
-      "predicted_spread": 0.9,
-      "confidence": 0.628
-    },
-    {
-      "home_team": "CHI",
-      "away_team": "MEM",
-      "home_win_prob": 0.822,
-      "predicted_winner": "CHI",
-      "predicted_spread": 16.8,
-      "confidence": 0.822
-    },
-    {
-      "home_team": "NOP",
-      "away_team": "DAL",
-      "home_win_prob": 0.932,
+      "home_team": "DET",
+      "away_team": "NOP",
+      "home_win_prob": 0.158,
       "predicted_winner": "NOP",
-      "predicted_spread": 26.9,
-      "confidence": 0.932
+      "predicted_spread": -16.2,
+      "confidence": 0.842
     },
     {
-      "home_team": "HOU",
-      "away_team": "LAL",
-      "home_win_prob": 0.102,
-      "predicted_winner": "LAL",
-      "predicted_spread": -22.3,
-      "confidence": 0.898
-    },
-    {
-      "home_team": "LAC",
-      "away_team": "SAS",
-      "home_win_prob": 0.388,
-      "predicted_winner": "SAS",
-      "predicted_spread": -9.3,
-      "confidence": 0.612
+      "home_team": "ORL",
+      "away_team": "SAC",
+      "home_win_prob": 0.924,
+      "predicted_winner": "ORL",
+      "predicted_spread": 34.6,
+      "confidence": 0.924
     }
   ]
 }

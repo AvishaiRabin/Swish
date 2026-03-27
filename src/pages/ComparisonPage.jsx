@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ResponsiveContainer, Tooltip,
 } from "recharts";
 import { Search, X, Layers, TrendingUp, Star, BarChart3 } from "lucide-react";
-import { TEAMS, TEAM_DETAILS } from "../data/teams.js";
+import { TEAMS } from "../data/teams.js";
+import { fetchTeamStats } from "../nbaApi.js";
 import { PLAYERS } from "../data/players.js";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -12,6 +13,16 @@ import PlayerHeadshot from "../components/PlayerHeadshot.jsx";
 
 export default function ComparisonPage() {
   const liveData = useLiveData();
+  const [allTeamStats, setAllTeamStats] = useState({});
+  useEffect(() => {
+    fetchTeamStats().then((data) => {
+      if (data?.length) {
+        const map = {};
+        data.forEach((t) => { map[t.team] = t; });
+        setAllTeamStats(map);
+      }
+    }).catch(() => {});
+  }, []);
   const [mode, setMode] = useState("player"); // "player" | "team"
   const [statMode, setStatMode] = useState("perGame"); // "perGame" | "per36" | "totals"
   const [leftId, setLeftId] = useState(null);
@@ -104,19 +115,18 @@ export default function ComparisonPage() {
     const conf = t.conference === "East" ? "East" : "West";
     const st = liveData.standings[conf].find((s) => s.team === abbr);
     if (!st) return null;
-    const d = TEAM_DETAILS[abbr];
+    const d = allTeamStats[abbr];
     const gp = st.wins + st.losses;
 
     const base = {
       wins: st.wins, losses: st.losses,
-      ppg: st.ppg, oppPpg: st.oppPpg,
-      fgPct: d ? d.teamStats.efgPct : 50.0,
-      pace: d ? d.teamStats.pace : 100.0,
-      ortg: d ? d.teamStats.ortg : 110.0,
-      drtg: d ? d.teamStats.drtg : 112.0,
-      netRtg: d ? d.teamStats.netRtg : 0,
-      reb: d?.roster?.length ? (d.roster.reduce((s, p) => s + p.rpg, 0) / d.roster.length * 5) : 42,
-      ast: d?.roster?.length ? (d.roster.reduce((s, p) => s + p.apg, 0) / d.roster.length * 5) : 24,
+      ppg: d?.ppg || st.ppg, oppPpg: d?.opp_ppg || st.oppPpg,
+      fgPct: d?.efg_pct || 50.0,
+      pace: d?.pace || 100.0,
+      ortg: d?.ortg || 110.0,
+      drtg: d?.drtg || 112.0,
+      netRtg: d?.net_rtg || 0,
+      reb: 42, ast: 24, // aggregate estimates; no roster dependency
     };
 
     if (statMode === "totals") {
@@ -125,8 +135,8 @@ export default function ComparisonPage() {
     return base;
   };
 
-  const leftStats = useMemo(() => leftId ? (isPlayerMode ? getPlayerStats(leftId) : getTeamStats(leftId)) : null, [leftId, isPlayerMode, statMode]);
-  const rightStats = useMemo(() => rightId ? (isPlayerMode ? getPlayerStats(rightId) : getTeamStats(rightId)) : null, [rightId, isPlayerMode, statMode]);
+  const leftStats = useMemo(() => leftId ? (isPlayerMode ? getPlayerStats(leftId) : getTeamStats(leftId)) : null, [leftId, isPlayerMode, statMode, allTeamStats]);
+  const rightStats = useMemo(() => rightId ? (isPlayerMode ? getPlayerStats(rightId) : getTeamStats(rightId)) : null, [rightId, isPlayerMode, statMode, allTeamStats]);
 
   // Stat rows for comparison
   const playerStatRows = [

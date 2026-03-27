@@ -277,9 +277,28 @@ export async function fetchPlayerBio(playerId) {
 // ============================================================================
 // TEAM OFFENSIVE & DEFENSIVE ARCHETYPES
 // ============================================================================
+export async function fetchTeamStats(teamAbbr) {
+  const url = teamAbbr ? `/api/db/team-stats?team=${teamAbbr}` : `/api/db/team-stats`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function fetchTeamArchetypes(teamAbbr) {
   const url = teamAbbr ? `/api/db/team-archetypes?team=${teamAbbr}` : `/api/db/team-archetypes`;
   const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchEloRatings() {
+  const res = await fetch("/api/db/elo-ratings");
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchTeamRatingHistory(teamAbbr) {
+  const res = await fetch(`/api/db/team-rating-history?team=${teamAbbr}`);
   if (!res.ok) return null;
   return res.json();
 }
@@ -381,21 +400,21 @@ export async function fetchScoreboard(date = null) {
   // scoreboardv3 has a different response shape
   const games = data.scoreboard?.games || [];
 
-  // If the requested date is more than 24h in the past, all games must be final
-  const reqDate = new Date(localDate + "T23:59:59");
-  const isPastDate = (Date.now() - reqDate.getTime()) > 24 * 60 * 60 * 1000;
+  // If the requested date is before today, all games must be final
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const isPastDate = localDate < todayStr;
 
-  return games.map((g) => ({
+  let mapped = games.map((g) => ({
     id: g.gameId,
-    homeTeam: g.homeTeam?.teamTricode,
-    awayTeam: g.awayTeam?.teamTricode,
+    homeTeam: normalizeAbbr(g.homeTeam?.teamTricode),
+    awayTeam: normalizeAbbr(g.awayTeam?.teamTricode),
     homeScore: g.homeTeam?.score ?? 0,
     awayScore: g.awayTeam?.score ?? 0,
-    // gameStatus: 1=pre, 2=live, 3=final (more reliable than period check)
+    // gameStatus: 1=pre, 2=live, 3=final (authoritative — don't rely on gameStatusText)
     // Safeguard: force FINAL for past-date games even if API returns stale status
     status: isPastDate
       ? "FINAL"
-      : g.gameStatus === 3 || g.gameStatusText?.toLowerCase().includes("final")
+      : g.gameStatus === 3
       ? "FINAL"
       : g.gameStatus === 2
       ? "LIVE"
@@ -408,6 +427,32 @@ export async function fetchScoreboard(date = null) {
     homePeriods: (g.homeTeam?.periods || []).map((p) => p.score ?? 0),
     awayPeriods: (g.awayTeam?.periods || []).map((p) => p.score ?? 0),
   }));
+
+  // scoreboardv3 returns score=0 for past dates (pre-game state, not live results).
+  // Fall back to team_game_results DB which has actual final scores.
+  if (isPastDate && mapped.length > 0 && mapped.some((g) => g.homeScore === 0 && g.awayScore === 0)) {
+    try {
+      const dbRes = await fetch(`/api/db/game-results?date=${localDate}`);
+      if (dbRes.ok) {
+        const { games: dbGames = [] } = await dbRes.json();
+        // Build lookup keyed by home-away pair
+        const dbMap = {};
+        for (const dg of dbGames) {
+          dbMap[`${dg.homeTeam}-${dg.awayTeam}`] = dg;
+        }
+        mapped = mapped.map((g) => {
+          if (g.homeScore === 0 && g.awayScore === 0) {
+            const key = `${g.homeTeam}-${g.awayTeam}`;
+            const dg = dbMap[key];
+            if (dg) return { ...g, homeScore: dg.homeScore, awayScore: dg.awayScore };
+          }
+          return g;
+        });
+      }
+    } catch { /* leave scores as-is */ }
+  }
+
+  return mapped;
 }
 
 // ============================================================================
@@ -416,21 +461,33 @@ export async function fetchScoreboard(date = null) {
 // homeTeamAbbr / awayTeamAbbr are passed from the scoreboard so we can
 // correctly label which resultSet rows belong to home vs away.
 export async function fetchBoxScore(gameId, homeTeamAbbr, awayTeamAbbr) {
-  // v3 endpoint — v2 returns empty rowSets for completed games
-  let data = await fetchNba("boxscoretraditionalv3", { GameID: gameId });
-  let box = data.boxScoreTraditional;
+  let box = null;
 
-  // v3 returns empty players for live games — fall back to CDN live feed
-  if (box && (!box.homeTeam?.players?.length && !box.awayTeam?.players?.length)) {
+  // 1. Try stats.nba.com v3 endpoint (works for completed games)
+  try {
+    const data = await fetchNba("boxscoretraditionalv3", { GameID: gameId });
+    const v3 = data?.boxScoreTraditional;
+    if (v3?.homeTeam?.players?.length || v3?.awayTeam?.players?.length) {
+      box = v3;
+    }
+  } catch (e) {
+    console.warn("[BoxScore] v3 failed:", e.message);
+  }
+
+  // 2. If v3 had no players (live game or API error), try CDN live feed
+  if (!box) {
     try {
       const liveRes = await fetch(`${API_BASE}-live/boxscore/${gameId}`);
       if (liveRes.ok) {
         const liveData = await liveRes.json();
-        if (liveData.boxScoreTraditional?.homeTeam?.players?.length) {
-          box = liveData.boxScoreTraditional;
+        const cdn = liveData?.boxScoreTraditional;
+        if (cdn?.homeTeam?.players?.length || cdn?.awayTeam?.players?.length) {
+          box = cdn;
         }
       }
-    } catch { /* fall through to return null below */ }
+    } catch (e) {
+      console.warn("[BoxScore] CDN failed:", e.message);
+    }
   }
 
   if (!box) return null;
@@ -449,7 +506,7 @@ export async function fetchBoxScore(gameId, homeTeamAbbr, awayTeamAbbr) {
         const isStarter = p.starter != null ? p.starter === "1" : starterCount < 5;
         starterCount++;
         return {
-          name: `${p.firstName} ${p.familyName}`,
+          name: p.name || `${p.firstName} ${p.familyName || p.lastName}`,
           pos: p.position || "",
           min: formatMinutes(s.minutes),
           pts: s.points ?? 0,
@@ -593,6 +650,13 @@ export async function fetchTickerData() {
       isPast: n === -1,
     };
   });
+
+  // Clear cache for past dates so we always get fresh scores (DB-supplemented).
+  // scoreboardv3 returns score=0 for past dates — bypassing cache forces the
+  // DB fallback in fetchScoreboard to run and fill in actual final scores.
+  for (const meta of dateMeta) {
+    if (meta.isPast) clearEndpointCache("scoreboardv3");
+  }
 
   // Sequential fetches — no Promise.all per NBA API rate limit rules
   const results = [];
